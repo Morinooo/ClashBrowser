@@ -1,0 +1,83 @@
+name: Bug report
+description: Report a reproducible problem in ClashBrowser
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. Please search existing issues first.
+        **Do not paste subscription URLs, node credentials or tokens.** Redact them.
+        Security vulnerabilities should not be reported here — see SECURITY.md.
+
+  - type: input
+    id: version
+    attributes:
+      label: ClashBrowser version
+      description: Shown in Toolbox → About.
+      placeholder: "1.6.7 (versionCode 18)"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: "e.g. Pixel 7, Android 14; or vivo X90, OriginOS 4 / Android 14"
+    validations:
+      required: true
+
+  - type: input
+    id: webview
+    attributes:
+      label: Android System WebView version
+      description: "Settings → Apps → Android System WebView (or Chrome if it provides WebView)."
+      placeholder: "e.g. 126.0.6478.122"
+
+  - type: dropdown
+    id: proxy
+    attributes:
+      label: Was the proxy enabled when the problem happened?
+      options:
+        - Proxy enabled, core running
+        - Proxy enabled, core not running / failed to start
+        - Proxy disabled (direct connection)
+        - Not sure
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Tap ...
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+    validations:
+      required: true
+
+  - type: textarea
+    id: corelog
+    attributes:
+      label: Core log (if the problem involves the proxy core)
+      description: "Toolbox is not needed: open the proxy panel and expand 内核日志 / Core log. Redact domains, node names and server addresses."
+      render: text
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Additional context
+      description: Screenshots, recordings, whether it happens on other sites, etc.

@@ -1,0 +1,55 @@
+name: Feature request
+description: Suggest an improvement or a new feature
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before requesting, check the README's "Known limitations" and "Roadmap" sections —
+        some limitations are deliberate design choices.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve?
+      description: Describe the use case, not only the solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing workarounds, other apps, or why the current behaviour is insufficient.
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Area
+      options:
+        - Browsing / tabs / address bar
+        - Home page / bookmarks / history
+        - Proxy core / subscriptions / nodes / modes
+        - WebView proxy integration
+        - Media / DRM / downloads
+        - Appearance / UI
+        - Build / documentation / CI
+        - Other
+
+  - type: checkboxes
+    id: constraints
+    attributes:
+      label: Constraints
+      description: This project intentionally keeps a small footprint.
+      options:
+        - label: This does not require a VPN service or system-wide proxy
+        - label: This does not require new Android permissions (or I explain why they are needed)
+        - label: This does not add analytics, ads or tracking

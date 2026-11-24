@@ -1,0 +1,19 @@
+# Normalize line endings for text files; keep platform-specific files native.
+* text=auto eol=lf
+
+*.bat    text eol=crlf
+*.cmd    text eol=crlf
+gradlew  text eol=lf
+gradlew.bat text eol=crlf
+
+*.jar    binary
+*.so     binary
+*.dat    binary
+*.mmdb   binary
+*.apk    binary
+*.aab    binary
+*.png    binary
+*.jpg    binary
+*.jpeg   binary
+*.webp   binary
+*.gif    binary

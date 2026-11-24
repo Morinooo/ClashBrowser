@@ -1,0 +1,42 @@
+# Gradle
+.gradle/
+build/
+app/build/
+
+# Local configuration and secrets
+local.properties
+keystore.properties
+signing.properties
+*.jks
+*.keystore
+*.p12
+*.pfx
+*.pem
+*.key
+.env
+.env.*
+
+# IDE / editor
+.idea/
+*.iml
+*.hprof
+.vscode/
+.fleet/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build-time downloaded third-party binaries (see NOTICE / SECURITY.md)
+app/src/main/jniLibs/arm64-v8a/libmihomo.so
+app/src/main/assets/Country.mmdb
+app/src/main/assets/geosite.dat
+
+# Local toolchain used by maintainers for verification builds
+.tooling/
+
+# Built artifacts
+*.apk
+*.aab
+*.idsig
+app/build/outputs/
