@@ -77,6 +77,18 @@ come with JVM unit tests under `app/src/test`. Instrumented tests are not set
 up. CI runs `assembleDebug` and `testDebugUnitTest` (which currently contains no
 tests) and uploads the APK artifact.
 
+## Release builds
+
+Release APKs are produced by the `Release` workflow
+(`.github/workflows/release.yml`) when a `v*` tag is pushed. The workflow reads
+the signing keystore and passwords from encrypted GitHub Actions secrets
+(`RELEASE_KEYSTORE_BASE64`, `RELEASE_KEYSTORE_PASSWORD`, `RELEASE_KEY_ALIAS`,
+`RELEASE_KEY_PASSWORD`) and attaches the signed APK plus `SHA256SUMS` to the
+GitHub release.
+
+Contributors never need signing material. Do not commit keystores, passwords or
+`local.properties`; debug builds work without any of them.
+
 ## Code review
 
 - Changes to proxy/core lifecycle, WebView configuration, permission or file

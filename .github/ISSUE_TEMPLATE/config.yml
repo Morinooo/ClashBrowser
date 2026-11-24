@@ -1,8 +1,9 @@
-blank_issues_enabled: false
+﻿blank_issues_enabled: false
 contact_links:
   - name: Security vulnerability
-    url: https://github.com/gzxiaozhou/ClashBrowser/security/advisories/new
+    url: https://github.com/Morinooo/ClashBrowser/security/advisories/new
     about: Please report security issues privately, not as a public issue. See SECURITY.md.
   - name: Questions and usage help
-    url: https://github.com/gzxiaozhou/ClashBrowser/issues
+    url: https://github.com/Morinooo/ClashBrowser/issues
     about: For usage questions, please open an issue with the "Question" context. Do not paste subscription URLs or node credentials.
+

@@ -1,7 +1,7 @@
 # ClashBrowser
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
-[![Android build](https://github.com/gzxiaozhou/ClashBrowser/actions/workflows/android.yml/badge.svg)](https://github.com/gzxiaozhou/ClashBrowser/actions/workflows/android.yml)
+[![Android build](https://github.com/Morinooo/ClashBrowser/actions/workflows/android.yml/badge.svg)](https://github.com/Morinooo/ClashBrowser/actions/workflows/android.yml)
 [![Platform](https://img.shields.io/badge/platform-Android%208.0%2B%20(arm64--v8a)-green.svg)](#环境要求)
 
 **内置 mihomo 内核的轻量 Android 浏览器——只代理自己的 WebView，不需要 VPN 服务。**
@@ -11,6 +11,20 @@ ClashBrowser 是一个轻量、无广告的 Android 浏览器，内置 [mihomo](
 > 本项目为独立项目，与 MetaCubeX、Clash 项目或 mihomo 项目均无隶属、背书或维护关系。
 
 [English README](README.md)
+
+---
+
+## 下载
+
+正式签名 APK 发布在 **[Releases](https://github.com/Morinooo/ClashBrowser/releases)**。
+
+- [最新版本](https://github.com/Morinooo/ClashBrowser/releases/latest)
+- 要求 **Android 8.0+（API 26）**，且为 **arm64-v8a** 设备
+- 使用 `SHA256SUMS` 校验下载文件：`sha256sum -c SHA256SUMS`
+- Release APK 由推送 `v*` Tag 触发的发布工作流自动构建并签名，不是 debug 包
+- 未上架 Google Play
+
+ClashBrowser **不内置**任何订阅、节点或代理服务，你需要自备 Clash 兼容订阅或配置。
 
 ---
 

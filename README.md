@@ -1,7 +1,7 @@
 # ClashBrowser
 
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue.svg)](LICENSE)
-[![Android build](https://github.com/gzxiaozhou/ClashBrowser/actions/workflows/android.yml/badge.svg)](https://github.com/gzxiaozhou/ClashBrowser/actions/workflows/android.yml)
+[![Android build](https://github.com/Morinooo/ClashBrowser/actions/workflows/android.yml/badge.svg)](https://github.com/Morinooo/ClashBrowser/actions/workflows/android.yml)
 [![Platform](https://img.shields.io/badge/platform-Android%208.0%2B%20(arm64--v8a)-green.svg)](#requirements)
 
 **A lightweight Android browser with an embedded mihomo core — it proxies only its own WebView, without a VPN service.**
@@ -11,6 +11,20 @@ ClashBrowser is a small, ad-free Android browser with a built-in [mihomo](https:
 > This is an independent project. It is **not** affiliated with, endorsed by, or maintained by MetaCubeX, the Clash project, or the mihomo project.
 
 [中文文档](README.zh-CN.md)
+
+---
+
+## Download
+
+Signed APKs are published in **[Releases](https://github.com/Morinooo/ClashBrowser/releases)**.
+
+- [Latest release](https://github.com/Morinooo/ClashBrowser/releases/latest)
+- Requires **Android 8.0+ (API 26)** on an **arm64-v8a** device
+- Verify the download with the `SHA256SUMS` asset: `sha256sum -c SHA256SUMS`
+- Release APKs are built and signed by the release workflow when a `v*` tag is pushed; they are not debug builds
+- Not distributed via Google Play
+
+ClashBrowser does **not** bundle any subscription, node or proxy service. You need your own Clash-compatible subscription or configuration.
 
 ---
 

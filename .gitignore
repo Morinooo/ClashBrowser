@@ -40,3 +40,6 @@ app/src/main/assets/geosite.dat
 *.aab
 *.idsig
 app/build/outputs/
+
+# Local release signing material (never commit)
+.release/
