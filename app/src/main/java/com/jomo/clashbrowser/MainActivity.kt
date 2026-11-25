@@ -161,8 +161,9 @@ class MainActivity : ComponentActivity() {
             lifecycleScope.launch(Dispatchers.IO) {
                 val result = runCatching {
                     val input = contentResolver.openInputStream(uri) ?: error("无法读取文件")
-                    val text = input.use { it.readBytes().toString(Charsets.UTF_8) }
-                    BookmarkStore.importHtml(text)
+                    val bytes = input.use { it.readBytes() }
+                    if (bytes.size > 5_000_000) error("书签文件过大（超过 5MB），已拒绝")
+                    BookmarkStore.importHtml(bytes.toString(Charsets.UTF_8))
                 }
                 withContext(Dispatchers.Main) {
                     result.onSuccess {
@@ -473,6 +474,15 @@ internal fun toLoadUrl(input: String, engine: String = "google"): String {
 const val DESKTOP_UA =
     "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36"
 
+/** WebRTC 防泄露：document-start 禁用 RTCPeerConnection，避免 ICE 候选地址暴露代理后真实 IP。 */
+const val WEBRTC_BLOCK_SCRIPT = """
+(function(){
+try{Object.defineProperty(window,'RTCPeerConnection',{value:undefined,writable:false,configurable:false});}
+catch(e){window.RTCPeerConnection=undefined;}
+window.webkitRTCPeerConnection=undefined;window.mozRTCPeerConnection=undefined;
+})();
+"""
+
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 private fun createWebView(
     context: android.content.Context,
@@ -491,10 +501,15 @@ private fun createWebView(
         if (event.actionMasked == MotionEvent.ACTION_DOWN) onTouchDown()
         false
     }
-    // DRM 探测挂起回退（详见 EME_FALLBACK_SCRIPT 注释）
+    // DRM 探测挂起回退（详见 EME_FALLBACK_SCRIPT 注释）；注入作用域限定 http/https，不含 file:// 等
     if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-        WebViewCompat.addDocumentStartJavaScript(wv, EME_FALLBACK_SCRIPT, setOf("*"))
-        WebViewCompat.addDocumentStartJavaScript(wv, CTX_CAPTURE_SCRIPT, setOf("*"))
+        val origins = setOf("http://*", "https://*")
+        WebViewCompat.addDocumentStartJavaScript(wv, EME_FALLBACK_SCRIPT, origins)
+        WebViewCompat.addDocumentStartJavaScript(wv, CTX_CAPTURE_SCRIPT, origins)
+        // WebRTC 防泄露：无痕强制、普通标签依开关，禁用 RTCPeerConnection 防 ICE 候选地址暴露真实 IP
+        if (tab.incognito || ProxyManager.isWebRtcBlock()) {
+            WebViewCompat.addDocumentStartJavaScript(wv, WEBRTC_BLOCK_SCRIPT, origins)
+        }
     }
     wv.addJavascriptInterface(object {
         @JavascriptInterface
@@ -577,8 +592,14 @@ private fun createWebView(
 
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
             val scheme = request.url.scheme ?: return false
-            // 只放行 http/https，忽略 intent:// 等外部跳转（无广告拉起）
-            return scheme != "http" && scheme != "https"
+            // 只放行 http/https，拦截 intent:// 等外部跳转（无广告拉起）并告知用户
+            val block = scheme != "http" && scheme != "https"
+            if (block) {
+                android.widget.Toast.makeText(
+                    view.context, "已拦截外部跳转：$scheme", android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+            return block
         }
 
         override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
@@ -1549,6 +1570,7 @@ private fun BrowserScreen(
                         t.webView?.reload()
                     }
                 },
+                onWebRtcChange = { webviewEpoch++ },
                 tabId = activeTab.id.toString(),
                 onReaderMode = { extractReader() },
                 currentUrl = activeTab.url,

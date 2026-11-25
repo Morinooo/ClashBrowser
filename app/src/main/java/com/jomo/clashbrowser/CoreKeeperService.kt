@@ -18,13 +18,13 @@ class CoreKeeperService : Service() {
         // 用户主动划掉应用 = 正常退出，下次启动不弹恢复弹窗
         SessionStore.init(this)
         SessionStore.markCleanExit()
-        ProxyManager.shutdown()
+        ProxyManager.shutdown(wipeRuntime = true)
         stopSelf()
         super.onTaskRemoved(rootIntent)
     }
 
     override fun onDestroy() {
-        ProxyManager.shutdown()
+        ProxyManager.shutdown(wipeRuntime = true)
         super.onDestroy()
     }
 }

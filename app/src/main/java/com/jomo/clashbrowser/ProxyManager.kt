@@ -63,6 +63,10 @@ object ProxyManager {
     private const val DELAY_TEST_URL = "http://www.gstatic.com/generate_204"
     private const val MAX_LOG_LINES = 400
 
+    /** 每次启动动态生成的随机 API secret：写入配置 secret 字段，全部 REST 调用带 Bearer 鉴权。 */
+    private var apiSecret: String = newSecret()
+    private fun newSecret(): String = java.util.UUID.randomUUID().toString().replace("-", "")
+
     private lateinit var appContext: Context
 
     lateinit var coreDir: File
@@ -119,6 +123,17 @@ object ProxyManager {
             }
         }
         ensureConfigHealthy()
+        // 静置加密：启动时把加密主副本解密到运行目录（内核只读运行明文）
+        val master = File(appContext.filesDir, "config.enc")
+        if (master.exists()) {
+            SecretStore.decrypt(master.readText())?.let { plain ->
+                if (plain.length > 10) runCatching { configFile.writeText(plain) }
+            }
+        }
+        // 本次会话随机 secret 写入运行配置，并同步加密主副本
+        apiSecret = newSecret()
+        runCatching { configFile.writeText(ensureBasics(configFile.readText())) }
+        runCatching { master.writeText(SecretStore.encrypt(configFile.readText())) }
     }
 
     /**
@@ -218,14 +233,20 @@ object ProxyManager {
         false
     }
 
-    /** 同步销毁内核进程（onTaskRemoved / onDestroy 中调用）。 */
-    fun shutdown() {
+    /** 同步销毁内核进程（onTaskRemoved / onDestroy 中调用）。
+     *  wipeRuntime=true 仅用于进程退出路径：清除运行期明文配置（静置只留加密主副本）。 */
+    fun shutdown(wipeRuntime: Boolean = false) {
         val p = process
         process = null
         if (p != null) {
             runCatching { p.destroyForcibly() }
             runCatching { p.waitFor(2, TimeUnit.SECONDS) }
             appendLog("[ProxyManager] 内核进程已销毁")
+        }
+        if (wipeRuntime) {
+            runCatching { configFile.delete() }
+            runCatching { File(coreDir, "config.yaml.bak").delete() }
+            runCatching { File(coreDir, "config.yaml.tmp").delete() }
         }
         _state.value = CoreState.STOPPED
     }
@@ -263,7 +284,7 @@ object ProxyManager {
 
     private fun appendLog(line: String) {
         synchronized(logBuffer) {
-            logBuffer.addLast(line)
+            logBuffer.addLast(maskText(line))
             while (logBuffer.size > MAX_LOG_LINES) logBuffer.removeFirst()
             _logs.value = logBuffer.toList()
         }
@@ -271,8 +292,12 @@ object ProxyManager {
 
     // ------------------------------------------------------------------ Clash API
 
+    /** 所有 Clash REST 调用统一带本次会话的 Bearer secret。 */
+    private fun apiBuilder(path: String): Request.Builder =
+        Request.Builder().url(API + path).header("Authorization", "Bearer $apiSecret")
+
     private fun apiGet(path: String): String? {
-        val req = Request.Builder().url(API + path).get().build()
+        val req = apiBuilder(path).get().build()
         return runCatching {
             client.newCall(req).execute().use { if (it.isSuccessful) it.body?.string() else null }
         }.getOrNull()
@@ -315,7 +340,7 @@ object ProxyManager {
     /** PUT /proxies/{group} 切换节点。 */
     suspend fun selectNode(group: String, node: String): Boolean = withContext(Dispatchers.IO) {
         val body = JSONObject().put("name", node).toString().toRequestBody(jsonType)
-        val req = Request.Builder().url("$API/proxies/${Uri.encode(group)}").put(body).build()
+        val req = apiBuilder("/proxies/${Uri.encode(group)}").put(body).build()
         runCatching { client.newCall(req).execute().use { it.isSuccessful } }.getOrDefault(false)
     }
 
@@ -329,7 +354,7 @@ object ProxyManager {
     /** PUT /configs?force=true 热重载当前 config.yaml。 */
     suspend fun reloadConfig(): Boolean = withContext(Dispatchers.IO) {
         val body = JSONObject().put("path", configFile.absolutePath).toString().toRequestBody(jsonType)
-        val req = Request.Builder().url("$API/configs?force=true").put(body).build()
+        val req = apiBuilder("/configs?force=true").put(body).build()
         runCatching { client.newCall(req).execute().use { it.isSuccessful } }.getOrDefault(false)
     }
 
@@ -350,6 +375,8 @@ object ProxyManager {
             }
             if (!tmp.renameTo(configFile)) configFile.writeText(patched)
         }.onFailure { return@withContext "写入配置失败: ${it.message}" }
+        // 静置加密主副本同步更新（运行目录明文仅供内核读取）
+        runCatching { File(appContext.filesDir, "config.enc").writeText(SecretStore.encrypt(patched)) }
         val ok = if (_state.value == CoreState.RUNNING) reloadConfig() else start()
         if (ok) setMode(preferredMode())
         if (ok) null else "配置已保存，但内核重载失败: ${lastError ?: "请查看内核日志"}"
@@ -372,16 +399,19 @@ object ProxyManager {
                 if (!resp.isSuccessful) return@withContext "订阅拉取失败: HTTP ${resp.code}"
                 userinfo = resp.header("subscription-userinfo")
                 disposition = resp.header("content-disposition")
-                resp.body?.string() ?: return@withContext "订阅内容为空"
+                val body = resp.body ?: return@withContext "订阅内容为空"
+                if (body.contentLength() > 2_000_000) return@withContext "订阅内容过大（超过 2MB），已拒绝"
+                body.string()
             }
         } catch (e: Exception) {
-            return@withContext "订阅拉取失败: ${e.message}"
+            return@withContext "订阅拉取失败: ${maskText(e.message ?: "未知错误")}"
         }
+        if (text.length > 2_000_000) return@withContext "订阅内容过大（超过 2MB），已拒绝"
         val err = saveConfigAndApply(text)
         if (err != null) return@withContext err
         // 保存配置档案（YAML 副本 + 流量/到期/更新时间元数据），供配置卡片展示与离线切换
         runCatching {
-            profileFile(trimmed).apply { parentFile?.mkdirs() }.writeText(text)
+            writeProfile(trimmed, text)
             val meta = metaObj()
             val o = meta.optJSONObject(trimmed) ?: JSONObject()
             o.put("name", deriveName(trimmed, disposition))
@@ -392,17 +422,16 @@ object ProxyManager {
             o.put("updated", System.currentTimeMillis())
             meta.put(trimmed, o)
             saveMeta(meta)
-            prefs().edit().putString("active_sub", trimmed).apply()
+            setActiveSub(trimmed)
         }
         null
     }
 
     /** 应用已保存的配置档案；本地无副本时自动重新拉取。返回 null 表示成功。 */
     suspend fun applyProfile(url: String): String? = withContext(Dispatchers.IO) {
-        val f = profileFile(url)
-        if (!f.exists() || f.length() <= 10) return@withContext updateSubscription(url)
-        val err = saveConfigAndApply(f.readText())
-        if (err == null) prefs().edit().putString("active_sub", url).apply()
+        val text = readProfile(url) ?: return@withContext updateSubscription(url)
+        val err = saveConfigAndApply(text)
+        if (err == null) setActiveSub(url)
         err
     }
 
@@ -424,16 +453,45 @@ object ProxyManager {
         }
     }
 
-    fun activeSub(): String =
-        prefs().getString("active_sub", null) ?: (listSubscriptions().firstOrNull() ?: "")
+    fun activeSub(): String {
+        val raw = prefs().getString("active_sub", null) ?: return listSubscriptions().firstOrNull() ?: ""
+        if (raw.isEmpty()) return ""
+        if (raw.startsWith("http://") || raw.startsWith("https://")) {
+            runCatching { setActiveSub(raw) } // 旧版明文指针，读取时升级加密
+            return raw
+        }
+        return SecretStore.decrypt(raw) ?: ""
+    }
+
+    private fun setActiveSub(url: String) {
+        prefs().edit().putString("active_sub", if (url.isEmpty()) "" else SecretStore.encrypt(url)).apply()
+    }
 
     /** 手动编辑 YAML 后调用：当前配置不再对应任何订阅档案。 */
     fun markCustomConfig() {
-        prefs().edit().putString("active_sub", "").apply()
+        setActiveSub("")
     }
 
     private fun profileFile(url: String): File =
         File(coreDir, "profiles/" + java.lang.Integer.toHexString(url.hashCode()) + ".yaml")
+
+    /** 档案静置加密写入。 */
+    private fun writeProfile(url: String, text: String) {
+        profileFile(url).apply { parentFile?.mkdirs() }.writeText(SecretStore.encrypt(text))
+    }
+
+    /** 档案解密读取；兼容旧版明文档案（直接使用并升级加密）。 */
+    private fun readProfile(url: String): String? {
+        val f = profileFile(url)
+        if (!f.exists() || f.length() <= 10) return null
+        val raw = f.readText()
+        SecretStore.decrypt(raw)?.let { return it }
+        if (raw.contains("proxies") || raw.contains("proxy-providers")) {
+            runCatching { writeProfile(url, raw) }
+            return raw
+        }
+        return null
+    }
 
     private fun metaObj(): JSONObject =
         runCatching { JSONObject(prefs().getString("sub_meta", "{}") ?: "{}") }.getOrDefault(JSONObject())
@@ -473,13 +531,29 @@ object ProxyManager {
                 .find(d)?.groupValues?.get(1)?.let { return Uri.decode(it.trim()) }
         }
         val seg = runCatching { Uri.parse(url).lastPathSegment }.getOrNull()
-        if (!seg.isNullOrBlank() && seg.contains('.')) return Uri.decode(seg)
-        return runCatching { Uri.parse(url).host }.getOrNull() ?: url
+        if (!seg.isNullOrBlank() && seg.contains('.') && seg.length <= 32) return Uri.decode(seg)
+        return runCatching { Uri.parse(url).host }.getOrNull() ?: maskUrl(url)
     }
 
+    /** 订阅链接掩码：保留协议/域名/路径，隐藏 query 与 fragment（token 参数）。 */
+    internal fun maskUrl(url: String): String {
+        val q = url.indexOf('?')
+        val h = url.indexOf('#')
+        val cut = listOf(q, h).filter { it >= 0 }.minOrNull() ?: return url
+        val base = url.substring(0, cut)
+        return if (q >= 0 && (h < 0 || q < h)) "$base?***" else base
+    }
+
+    /** 文本中所有 http(s) 链接统一掩码，供日志与报错脱敏。 */
+    internal fun maskText(s: String): String =
+        Regex("https?://[^\\s\"'<>）)]+").replace(s) { maskUrl(it.value) }
+
     internal fun validateYaml(text: String): String? {
+        if (text.length > 2_000_000) return "配置过大（超过 2MB），已拒绝"
         return try {
-            val root = Yaml().load<Any?>(text)
+            val opts = org.yaml.snakeyaml.LoaderOptions()
+            opts.codePointLimit = 2_000_000
+            val root = Yaml(opts).load<Any?>(text)
             when {
                 root !is Map<*, *> -> "配置不是合法的 YAML 映射"
                 !root.containsKey("proxies") && !root.containsKey("proxy-providers") ->
@@ -513,8 +587,9 @@ object ProxyManager {
             "port" to "0",
             "socks-port" to "0",
             "allow-lan" to "false",
+            "bind-address" to "127.0.0.1",
             "external-controller" to "127.0.0.1:9090",
-            "secret" to "\"\""
+            "secret" to "\"$apiSecret\""
         )
         val header = StringBuilder()
         for ((k, v) in required) {
@@ -538,7 +613,7 @@ object ProxyManager {
     /** PATCH /configs 切换运行模式，成功后持久化为用户偏好。 */
     suspend fun setMode(mode: String): Boolean = withContext(Dispatchers.IO) {
         val body = JSONObject().put("mode", mode).toString().toRequestBody(jsonType)
-        val req = Request.Builder().url("$API/configs").patch(body).build()
+        val req = apiBuilder("/configs").patch(body).build()
         val ok = runCatching { client.newCall(req).execute().use { it.isSuccessful } }.getOrDefault(false)
         if (ok) {
             setPreferredMode(mode)
@@ -581,6 +656,10 @@ object ProxyManager {
     fun isSuggestEnabled(): Boolean = prefs().getBoolean("suggest_enabled", true)
     fun setSuggestEnabled(v: Boolean) = prefs().edit().putBoolean("suggest_enabled", v).apply()
 
+    /** WebRTC 防泄露：普通标签禁用 RTCPeerConnection（无痕标签强制禁用，不受开关影响）。 */
+    fun isWebRtcBlock(): Boolean = prefs().getBoolean("webrtc_block", false)
+    fun setWebRtcBlock(v: Boolean) = prefs().edit().putBoolean("webrtc_block", v).apply()
+
     /** 轻量 GET（与订阅拉取同通道），供搜索建议等使用；须在 IO 线程调用。 */
     fun httpGet(url: String): String? = runCatching {
         client.newCall(okhttp3.Request.Builder().url(url).build()).execute()
@@ -600,7 +679,15 @@ object ProxyManager {
     private fun prefs() = appContext.getSharedPreferences("proxy_prefs", Context.MODE_PRIVATE)
 
     fun listSubscriptions(): List<String> {
-        val arr = JSONArray(prefs().getString("sub_urls", "[]"))
+        val raw = prefs().getString("sub_urls", "[]") ?: "[]"
+        // 旧版明文列表兼容：读取后升级加密静置
+        val json = if (raw.startsWith("[")) {
+            runCatching { prefs().edit().putString("sub_urls", SecretStore.encrypt(raw)).apply() }
+            raw
+        } else {
+            SecretStore.decrypt(raw) ?: "[]"
+        }
+        val arr = runCatching { JSONArray(json) }.getOrDefault(JSONArray())
         return (0 until arr.length()).map { arr.getString(it) }
     }
 
@@ -608,19 +695,21 @@ object ProxyManager {
         val list = listSubscriptions().toMutableList()
         list.remove(url)
         list.add(0, url)
-        prefs().edit().putString("sub_urls", JSONArray(list.take(10)).toString()).apply()
+        prefs().edit()
+            .putString("sub_urls", SecretStore.encrypt(JSONArray(list.take(10)).toString()))
+            .apply()
     }
 
     fun removeSubscription(url: String) {
         val list = listSubscriptions().toMutableList()
         list.remove(url)
-        prefs().edit().putString("sub_urls", JSONArray(list).toString()).apply()
+        prefs().edit().putString("sub_urls", SecretStore.encrypt(JSONArray(list).toString())).apply()
         val meta = metaObj()
         meta.remove(url)
         saveMeta(meta)
         runCatching { profileFile(url).delete() }
-        if (prefs().getString("active_sub", null) == url) {
-            prefs().edit().putString("active_sub", list.firstOrNull() ?: "").apply()
+        if (activeSub() == url) {
+            setActiveSub(list.firstOrNull() ?: "")
         }
     }
 }

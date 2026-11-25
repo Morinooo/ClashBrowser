@@ -1,4 +1,5 @@
 import java.net.HttpURLConnection
+import java.security.MessageDigest
 import java.net.URI
 import java.util.zip.GZIPInputStream
 
@@ -15,8 +16,8 @@ android {
         applicationId = "com.jomo.clashbrowser"
         minSdk = 26
         targetSdk = 34
-        versionCode = 24
-        versionName = "1.16.0"
+        versionCode = 25
+        versionName = "1.16.1"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
@@ -43,7 +44,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isDebuggable = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
             val keystorePath = System.getenv("RELEASE_KEYSTORE_PATH")
             if (!keystorePath.isNullOrBlank()) {
@@ -66,8 +68,18 @@ android {
 }
 
 // ---------------------------------------------------------------------------
-// 首次编译前自动下载 mihomo 内核与 Geo 数据库（已存在则跳过），挂载到 preBuild
+// 首次编译前自动下载 mihomo 内核（锁定版本 + SHA-256 校验），挂载到 preBuild；
+// Geo 数据库固化于仓库 assets，构建期仅做 SHA-256 校验（供应链锁定）
 // ---------------------------------------------------------------------------
+private val MIHOMO_TAG = "v1.19.34"
+private val MIHOMO_GZ_SHA256 = "48a71fc6a68e2909587176e0ab7185d8f2fac298fa96ccdacf30ea86ab2359b5"
+private val GEO_MMDB_SHA256 = "4ffd955e56281782c40949809011ec3d06a3eedd131993792365f397f5757647"
+private val GEO_SITE_SHA256 = "de5bdc1f196e68cd1fad180becb593a0d3cdd41c372de7742dfacd0b1c8b5230"
+
+private fun sha256(bytes: ByteArray): String =
+    MessageDigest.getInstance("SHA-256").digest(bytes)
+        .joinToString("") { "%02x".format(it) }
+
 val fetchCoreAssets by tasks.registering {
     val soFile = layout.projectDirectory.file("src/main/jniLibs/arm64-v8a/libmihomo.so")
     val mmdbFile = layout.projectDirectory.file("src/main/assets/Country.mmdb")
@@ -98,26 +110,17 @@ val fetchCoreAssets by tasks.registering {
             throw lastError ?: RuntimeException("下载失败: $url")
         }
 
-        // 1. mihomo 内核
+        // 1. mihomo 内核：锁定版本下载 + SHA-256 校验（不匹配即构建失败）
         if (soFile.asFile.length() <= 1024 * 1024) {
-            logger.lifecycle("[fetchCoreAssets] 下载 mihomo android-arm64-v8a 内核...")
-            var assetUrl: String? = null
-            try {
-                val apiJson = String(httpGet("https://api.github.com/repos/MetaCubeX/mihomo/releases/latest"))
-                assetUrl = Regex("\"browser_download_url\"\\s*:\\s*\"([^\"]*mihomo-android-arm64-v8a?-v[\\d.]+\\.gz)\"")
-                    .find(apiJson)?.groupValues?.get(1)
-            } catch (e: Exception) {
-                logger.warn("GitHub API 不可用: ${e.message}")
-            }
-            if (assetUrl == null) {
-                val html = String(httpGet("https://github.com/MetaCubeX/mihomo/releases/latest"))
-                val tag = Regex("releases/tag/(v[\\d.]+)").find(html)?.groupValues?.get(1)
-                    ?: throw GradleException("无法解析 mihomo 最新版本号")
-                assetUrl = "https://github.com/MetaCubeX/mihomo/releases/download/$tag/mihomo-android-arm64-v8-$tag.gz"
-            }
-            val resolvedUrl = assetUrl ?: throw GradleException("无法定位 mihomo 内核下载地址")
+            logger.lifecycle("[fetchCoreAssets] 下载 mihomo $MIHOMO_TAG android-arm64-v8a 内核...")
+            val resolvedUrl =
+                "https://github.com/MetaCubeX/mihomo/releases/download/$MIHOMO_TAG/mihomo-android-arm64-v8-$MIHOMO_TAG.gz"
             logger.lifecycle("  内核地址: $resolvedUrl")
             val gzBytes = httpGet(resolvedUrl)
+            val got = sha256(gzBytes)
+            if (got != MIHOMO_GZ_SHA256) {
+                throw GradleException("mihomo 内核 SHA-256 校验失败（期望 $MIHOMO_GZ_SHA256，实际 $got）")
+            }
             soFile.asFile.parentFile.mkdirs()
             GZIPInputStream(gzBytes.inputStream()).use { gz ->
                 soFile.asFile.outputStream().use { out -> gz.copyTo(out) }
@@ -125,24 +128,15 @@ val fetchCoreAssets by tasks.registering {
             logger.lifecycle("[fetchCoreAssets] 内核已就位: ${soFile.asFile} (${soFile.asFile.length() / 1024 / 1024} MB)")
         }
 
-        // 2. Country.mmdb
-        if (mmdbFile.asFile.length() <= 10 * 1024) {
-            logger.lifecycle("[fetchCoreAssets] 下载 country-lite.mmdb...")
-            val bytes = httpGet("https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/country-lite.mmdb")
-            mmdbFile.asFile.parentFile.mkdirs()
-            mmdbFile.asFile.writeBytes(bytes)
+        // 2/3. Geo 数据库已固化进仓库 assets：构建期校验 SHA-256，杜绝上游滚动更新投毒
+        fun verifyGeo(f: java.io.File, expect: String, name: String) {
+            if (!f.exists()) throw GradleException("缺少固化的 $name")
+            val got = sha256(f.readBytes())
+            if (got != expect) throw GradleException("$name SHA-256 校验失败（期望 $expect，实际 $got）")
+            logger.lifecycle("[fetchCoreAssets] $name 校验通过 (${f.length() / 1024} KB)")
         }
-
-        // 3. geosite.dat（兼容含 GEOSITE 规则的订阅）
-        if (geositeFile.asFile.length() <= 10 * 1024) {
-            logger.lifecycle("[fetchCoreAssets] 下载 geosite.dat...")
-            try {
-                val bytes = httpGet("https://github.com/MetaCubeX/meta-rules-dat/releases/latest/download/geosite.dat")
-                geositeFile.asFile.writeBytes(bytes)
-            } catch (e: Exception) {
-                logger.warn("geosite.dat 下载失败（非致命）: ${e.message}")
-            }
-        }
+        verifyGeo(mmdbFile.asFile, GEO_MMDB_SHA256, "Country.mmdb")
+        verifyGeo(geositeFile.asFile, GEO_SITE_SHA256, "geosite.dat")
     }
 }
 

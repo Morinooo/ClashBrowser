@@ -186,6 +186,7 @@ object BookmarkStore {
      * 返回 [新增书签数, 跳过数, 新增文件夹数]。
      */
     fun importHtml(text: String): IntArray {
+        if (text.length > 5_000_000) throw IllegalArgumentException("书签文件过大（超过 5MB），已拒绝")
         val tokenRe = Regex(
             "<DL\\b[^>]*>|</DL>|<H3[^>]*>([\\s\\S]*?)</H3>|<A\\s+[^>]*>([\\s\\S]*?)</A>",
             RegexOption.IGNORE_CASE
@@ -198,8 +199,10 @@ object BookmarkStore {
         val existingUrls = list().map { it.url }.toHashSet()
         var added = 0
         var skipped = 0
+        var seen = 0
         var total = countBookmarks()
         tokenRe.findAll(text).forEach { m ->
+            if (++seen > 20_000) throw IllegalArgumentException("书签条数超过 2 万上限，已拒绝")
             val t = m.value
             when {
                 t.startsWith("<DL", ignoreCase = true) -> {

@@ -226,7 +226,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Current status
 
-Version **1.16.0** (`versionCode 24`), actively developed. Version names follow
+Version **1.16.1** (`versionCode 25`), actively developed. Version names follow
 semver (feature = minor, fix = patch); see CHANGELOG for the old→new map.
 
 | Area | Status |

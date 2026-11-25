@@ -94,6 +94,7 @@ import java.util.Locale
 fun ToolboxSheet(
     incognito: Boolean,
     onIncognitoChange: (Boolean) -> Unit,
+    onWebRtcChange: (Boolean) -> Unit = {},
     onOpenUrl: (String) -> Unit,
     onUaChange: (Boolean) -> Unit,
     currentUrl: String,
@@ -251,6 +252,30 @@ fun ToolboxSheet(
                         onCheckedChange = {
                             suggestOn = it
                             ProxyManager.setSuggestEnabled(it)
+                        }
+                    )
+                }
+                // WebRTC 防泄露：普通标签禁用 RTCPeerConnection（无痕标签强制禁用）
+                var rtcBlock by remember { mutableStateOf(ProxyManager.isWebRtcBlock()) }
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("WebRTC 防泄露", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            if (rtcBlock) "开启 · 所有标签禁用 RTCPeerConnection"
+                            else "关闭 · 仅无痕标签强制禁用",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
+                    Switch(
+                        checked = rtcBlock,
+                        onCheckedChange = {
+                            rtcBlock = it
+                            ProxyManager.setWebRtcBlock(it)
+                            onWebRtcChange(it)
                         }
                     )
                 }
@@ -1026,7 +1051,7 @@ fun ToolboxSheet(
                     Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())
                 ) {
                     Text("ClashBrowser", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("v1.16.0 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
+                    Text("v1.16.1 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
                     Text("Made by Morin with Qwen.", fontSize = 11.sp, color = Color.Gray)
                     Spacer(Modifier.height(16.dp))
 
@@ -1049,7 +1074,17 @@ fun ToolboxSheet(
                     )
                     Spacer(Modifier.height(6.dp))
                     ChangelogBlock(
-                        "v1.16.0（当前）",
+                        "v1.16.1（当前）",
+                        "安全加固五项：配置显式 bind-address 127.0.0.1 + 每次启动随机 API secret（全部 REST 调用带鉴权）；" +
+                            "WebRTC 防泄露（无痕强制禁用 RTCPeerConnection，普通标签更多里可开关）；" +
+                            "订阅链接/日志默认掩码 token 参数，订阅与配置 Keystore AES/GCM 加密静置、退出清运行明文，" +
+                            "书签导入≤5MB/2万条、订阅与 YAML≤2MB 兜底；" +
+                            "JS 注入限定 http/https 作用域、外部跳转拦截提示、FileProvider 最小授权复核；" +
+                            "内核锁定 mihomo v1.19.34 + SHA-256 校验、Geo 数据库固化校验、release 关 debuggable 开混淆。"
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    ChangelogBlock(
+                        "v1.16.0",
                         "地址栏搜索建议/自动补全：输入防抖下拉本地历史/收藏匹配与当前引擎 suggest（Google/Bing/百度/DuckDuckGo），" +
                             "点按直接加载或检索，无痕不出建议，更多里可开关；" +
                             "网页定位权限（geolocation API）：来源确认框（允许/拒绝+记住选择）+ 系统运行时权限，" +

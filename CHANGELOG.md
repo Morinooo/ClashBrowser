@@ -17,6 +17,24 @@ installed apps can always upgrade; only `versionName` / tags were reorganized.
 1.7.0→1.14.0. GitHub releases were retagged accordingly (v1.13.0 / v1.13.1 /
 v1.13.2 / v1.14.0); older history never had published releases.
 
+## [1.16.1] — versionCode 25
+
+### Security
+- Local port & API isolation: config pins `bind-address: 127.0.0.1`; random
+  per-start REST secret with Bearer auth on every Clash API call; orphan
+  kernel cleanup retained.
+- WebRTC leak prevention: document-start disable of RTCPeerConnection, forced
+  in incognito; new Toolbox → More switch for normal tabs (default off).
+- Subscription/log redaction (query & fragment masked), Android Keystore
+  AES/GCM at-rest encryption for subscription list/pointer/profiles/config
+  master with runtime-plaintext wipe on process exit; bookmark import capped
+  at 5 MB / 20k tokens, subscription & YAML at 2 MB with parse fallbacks.
+- WebView boundaries: document-start scripts scoped to http/https origins;
+  blocked external schemes now toast; FileProvider grants re-audited minimal.
+- Supply chain: mihomo pinned v1.19.34 + SHA-256 verified at build; Geo
+  databases vendored at pinned hashes; release `debuggable=false` + R8
+  minification with JsInterface/SnakeYAML keep rules; signing stays in CI.
+
 ## [1.16.0] — versionCode 24
 
 ### Added
