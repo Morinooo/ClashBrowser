@@ -4,6 +4,7 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -67,8 +68,14 @@ jobs:
         run: |
           NOTES="docs/releases/${GITHUB_REF_NAME}.md"
           if [ ! -f "$NOTES" ]; then
-            echo "::error::Release notes file $NOTES not found"
-            exit 1
+            # Renamed historical tags: notes live on main, code snapshot stays at the tag
+            git fetch --depth=1 origin main
+            if git show "origin/main:docs/releases/${GITHUB_REF_NAME}.md" > "$RUNNER_TEMP/notes.md" 2>/dev/null; then
+              NOTES="$RUNNER_TEMP/notes.md"
+            else
+              echo "::error::Release notes file $NOTES not found"
+              exit 1
+            fi
           fi
           gh release create "${GITHUB_REF_NAME}" \
             "ClashBrowser-${GITHUB_REF_NAME}-arm64-v8a.apk" \
