@@ -577,6 +577,16 @@ object ProxyManager {
     fun searchEngine(): String = prefs().getString("search_engine", "google") ?: "google"
     fun setSearchEngine(v: String) = prefs().edit().putString("search_engine", v).apply()
 
+    /** 地址栏搜索建议开关（本地历史/收藏 + 引擎 suggest 下拉）。 */
+    fun isSuggestEnabled(): Boolean = prefs().getBoolean("suggest_enabled", true)
+    fun setSuggestEnabled(v: Boolean) = prefs().edit().putBoolean("suggest_enabled", v).apply()
+
+    /** 轻量 GET（与订阅拉取同通道），供搜索建议等使用；须在 IO 线程调用。 */
+    fun httpGet(url: String): String? = runCatching {
+        client.newCall(okhttp3.Request.Builder().url(url).build()).execute()
+            .use { if (it.isSuccessful) it.body?.string() else null }
+    }.getOrNull()
+
     /** 网页内打开新页面（target=_blank / window.open）是否默认新建标签。 */
     fun isOpenNewTab(): Boolean = prefs().getBoolean("open_new_tab", true)
     fun setOpenNewTab(v: Boolean) = prefs().edit().putBoolean("open_new_tab", v).apply()

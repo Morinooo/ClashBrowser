@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Settings
@@ -230,6 +231,29 @@ fun ToolboxSheet(
                         }
                     )
                 }
+                // 搜索建议：地址栏下拉（本地历史/收藏 + 引擎 suggest），无痕不出建议
+                var suggestOn by remember { mutableStateOf(ProxyManager.isSuggestEnabled()) }
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("搜索建议", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            if (suggestOn) "开启 · 地址栏下拉历史/收藏与引擎建议"
+                            else "关闭 · 地址栏不显示下拉建议",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
+                    Switch(
+                        checked = suggestOn,
+                        onCheckedChange = {
+                            suggestOn = it
+                            ProxyManager.setSuggestEnabled(it)
+                        }
+                    )
+                }
                 // 桌面模式开关移至主列表「浏览器标识」页，避免重复入口
                 var engine by remember { mutableStateOf(ProxyManager.searchEngine()) }
                 ToolboxRow(
@@ -250,6 +274,12 @@ fun ToolboxSheet(
                 ) { page = "subinfo" }
                 Spacer(Modifier.height(4.dp))
                 ToolboxRow(
+                    icon = Icons.Default.Place,
+                    title = "定位权限记录",
+                    desc = "查看/清除各网站定位允许或拒绝决定"
+                ) { page = "geo" }
+                Spacer(Modifier.height(4.dp))
+                ToolboxRow(
                     icon = painterResource(R.drawable.ic_reader),
                     title = "阅读模式",
                     desc = "提取当前页正文，纯净重排阅读"
@@ -260,6 +290,73 @@ fun ToolboxSheet(
                     title = "资源嗅探",
                     desc = "当前标签的媒体/流地址：复制、下载、打开"
                 ) { page = "sniffer" }
+            }
+
+            "geo" -> {
+                SheetHeader("定位权限") { page = "more" }
+                Spacer(Modifier.height(8.dp))
+                var geoVersion by remember { mutableIntStateOf(0) }
+                val entries = remember(geoVersion) { GeoStore.list() }
+                var geoDelete by remember { mutableStateOf<String?>(null) }
+                var geoClear by remember { mutableStateOf(false) }
+                if (entries.isEmpty()) {
+                    Text("暂无网站定位权限记录", fontSize = 12.sp, color = Color.Gray)
+                }
+                entries.forEach { (origin, allow) ->
+                    Row(
+                        Modifier.fillMaxWidth().padding(vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(origin, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(if (allow) "已允许" else "已拒绝", fontSize = 11.sp, color = Color.Gray)
+                        }
+                        IconButton(onClick = { geoDelete = origin }) {
+                            Icon(Icons.Default.Delete, "删除记录")
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+                TextButton(onClick = { geoClear = true }) { Text("清空全部记录") }
+                Text(
+                    "删除记录后，该网站下次请求定位会重新弹窗询问",
+                    fontSize = 11.sp,
+                    color = Color.Gray
+                )
+                geoDelete?.let { o ->
+                    AlertDialog(
+                        onDismissRequest = { geoDelete = null },
+                        title = { Text("删除定位记录") },
+                        text = { Text("删除 $o 的定位权限决定？") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                GeoStore.forget(o)
+                                geoVersion++
+                                geoDelete = null
+                            }) { Text("删除") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { geoDelete = null }) { Text("取消") }
+                        }
+                    )
+                }
+                if (geoClear) {
+                    AlertDialog(
+                        onDismissRequest = { geoClear = false },
+                        title = { Text("清空定位记录") },
+                        text = { Text("清空全部网站的定位权限决定？") },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                GeoStore.clear()
+                                geoVersion++
+                                geoClear = false
+                            }) { Text("清空") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { geoClear = false }) { Text("取消") }
+                        }
+                    )
+                }
             }
 
             "ua" -> {
@@ -929,7 +1026,7 @@ fun ToolboxSheet(
                     Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())
                 ) {
                     Text("ClashBrowser", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("v1.15.1 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
+                    Text("v1.16.0 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
                     Text("Made by Morin with Qwen.", fontSize = 11.sp, color = Color.Gray)
                     Spacer(Modifier.height(16.dp))
 
@@ -952,7 +1049,15 @@ fun ToolboxSheet(
                     )
                     Spacer(Modifier.height(6.dp))
                     ChangelogBlock(
-                        "v1.15.1（当前）",
+                        "v1.16.0（当前）",
+                        "地址栏搜索建议/自动补全：输入防抖下拉本地历史/收藏匹配与当前引擎 suggest（Google/Bing/百度/DuckDuckGo），" +
+                            "点按直接加载或检索，无痕不出建议，更多里可开关；" +
+                            "网页定位权限（geolocation API）：来源确认框（允许/拒绝+记住选择）+ 系统运行时权限，" +
+                            "按来源持久化决定，更多-定位权限记录可查看/删除/清空（二次确认）。"
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    ChangelogBlock(
+                        "v1.15.1",
                         "修复网页输入框长按被自定义菜单拦截：可编辑节点放行系统选择/全选/剪切/复制/粘贴菜单；" +
                             "订阅链接框新增一键粘贴按钮（读剪贴板），长按浮窗受限时仍可粘贴；" +
                             "页顶代理/内核提示横框右侧新增关闭按钮，状态变化时重新提示；" +

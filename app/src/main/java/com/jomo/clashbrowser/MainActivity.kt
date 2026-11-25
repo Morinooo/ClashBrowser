@@ -39,6 +39,9 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
@@ -71,7 +74,9 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -128,6 +133,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.net.URLEncoder
@@ -192,6 +198,35 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    // 网页定位：系统运行时权限结果回传 WebView；拒绝时同步撤销该来源的"允许"记忆
+    private var geoPending: Pair<String, android.webkit.GeolocationPermissions.Callback>? = null
+    private val geoPermission =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
+            val pending = geoPending ?: return@registerForActivityResult
+            geoPending = null
+            val granted = result.values.any { it }
+            if (!granted) GeoStore.remember(pending.first, false)
+            pending.second.invoke(pending.first, granted, false)
+        }
+
+    fun requestGeoPermission(origin: String, cb: android.webkit.GeolocationPermissions.Callback) {
+        val granted = checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED ||
+            checkSelfPermission(android.Manifest.permission.ACCESS_COARSE_LOCATION) ==
+            android.content.pm.PackageManager.PERMISSION_GRANTED
+        if (granted) {
+            cb.invoke(origin, true, false)
+        } else {
+            geoPending = origin to cb
+            geoPermission.launch(
+                arrayOf(
+                    android.Manifest.permission.ACCESS_FINE_LOCATION,
+                    android.Manifest.permission.ACCESS_COARSE_LOCATION
+                )
+            )
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ProxyManager.init(this)
@@ -201,6 +236,7 @@ class MainActivity : ComponentActivity() {
         HomeStore.init(this)
         AdBlocker.init(this)
         DownloadStore.init(this)
+        GeoStore.init(this)
         // 按持久化外观模式设置窗口主题（影响窗口背景与 WebView 的深浅色判定）
         val mode = ProxyManager.themeMode()
         val initialDark = mode == "dark" || (mode == "system" &&
@@ -247,7 +283,8 @@ class MainActivity : ComponentActivity() {
                             val day = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
                             exportBookmarks.launch("ClashBrowser_书签_$day.html")
                         },
-                        onFileChooser = { p, c -> launchFileChooser(p, c) }
+                        onFileChooser = { p, c -> launchFileChooser(p, c) },
+                        onGeoAllow = { o, c -> requestGeoPermission(o, c) }
                     )
                 }
             }
@@ -444,7 +481,9 @@ private fun createWebView(
     onLongCtx: (CtxInfo) -> Unit = {},
     onWindowOpen: (android.os.Message) -> Boolean = { false },
     onFileChooser: (WebChromeClient.FileChooserParams, ValueCallback<Array<Uri>>) -> Unit = { _, cb -> cb.onReceiveValue(null) },
-    onFindResult: (Int, Int) -> Unit = { _, _ -> }
+    onFindResult: (Int, Int) -> Unit = { _, _ -> },
+    onGeoPrompt: (String, android.webkit.GeolocationPermissions.Callback) -> Unit = { o, cb -> cb.invoke(o, false, false) },
+    onGeoHide: () -> Unit = {}
 ): WebView {
     val wv = SecureWebView(context)
     // 触摸网页内容（含空白处）即收起地址栏输入焦点；返回 false 不影响网页自身交互
@@ -591,6 +630,18 @@ private fun createWebView(
             if (!title.isNullOrBlank()) tab.title = title
         }
 
+        // 网页定位请求：宿主弹来源确认框 + 系统运行时权限，决定按来源持久化
+        override fun onGeolocationPermissionsShowPrompt(
+            origin: String,
+            callback: android.webkit.GeolocationPermissions.Callback
+        ) {
+            onGeoPrompt(origin, callback)
+        }
+
+        override fun onGeolocationPermissionsHidePrompt() {
+            onGeoHide()
+        }
+
         // 放行网页受保护媒体标识请求（Widevine DRM 许可证初始化所需），主线程 grant
         override fun onPermissionRequest(request: PermissionRequest?) {
             val r = request ?: return
@@ -644,7 +695,8 @@ private fun BrowserScreen(
     onThemeModeChange: (String) -> Unit,
     onImportBookmarks: () -> Unit,
     onExportBookmarks: () -> Unit,
-    onFileChooser: (WebChromeClient.FileChooserParams, ValueCallback<Array<Uri>>) -> Unit
+    onFileChooser: (WebChromeClient.FileChooserParams, ValueCallback<Array<Uri>>) -> Unit,
+    onGeoAllow: (String, android.webkit.GeolocationPermissions.Callback) -> Unit
 ) {
     val context = LocalContext.current
     val rootFocus = LocalFocusManager.current
@@ -679,6 +731,30 @@ private fun BrowserScreen(
     var readerDoc by remember { mutableStateOf<ReaderDoc?>(null) }
     var readerSp by remember { mutableIntStateOf(16) }
     var bannerDismissed by remember { mutableStateOf(false) }
+    var suggestions by remember { mutableStateOf<List<Suggest.Item>>(emptyList()) }
+    var suggestOn by remember { mutableStateOf(ProxyManager.isSuggestEnabled()) }
+    var geoRequest by remember { mutableStateOf<Pair<String, android.webkit.GeolocationPermissions.Callback>?>(null) }
+    var geoRemember by remember { mutableStateOf(true) }
+
+    // 工具箱关闭后刷新建议开关（开关在更多页内修改）
+    LaunchedEffect(showToolboxSheet) {
+        if (!showToolboxSheet) suggestOn = ProxyManager.isSuggestEnabled()
+    }
+
+    // 地址栏建议：250ms 防抖；键变化自动取消上一次协程（含网络请求）
+    LaunchedEffect(addressValue.text, addressFocused, incognito, suggestOn) {
+        suggestions = emptyList()
+        val q = addressValue.text.trim()
+        if (!addressFocused || incognito || !suggestOn || q.isBlank()) return@LaunchedEffect
+        delay(250)
+        val local = Suggest.local(q, HistoryStore.list(), BookmarkStore.list())
+        suggestions = local
+        val engine = ProxyManager.searchEngine()
+        val remote = withContext(Dispatchers.IO) { ProxyManager.httpGet(Suggest.url(engine, q)) }
+            ?.let { Suggest.parse(engine, it) } ?: emptyList()
+        suggestions = (local + remote.take(5).map { Suggest.Item(it, "", Suggest.Kind.SEARCH) })
+            .distinctBy { it.text + it.url }.take(8)
+    }
 
     // 代理/内核状态变化时重新提示（此前被手动关闭的横框随新状态恢复）
     LaunchedEffect(proxyEnabled, coreState, proxyReady) { bannerDismissed = false }
@@ -868,7 +944,21 @@ private fun BrowserScreen(
                 true
             },
             onFileChooser,
-            { o, t -> findOrdinal = o; findTotal = t }
+            { o, t -> findOrdinal = o; findTotal = t },
+            { origin, cb ->
+                when (GeoStore.decision(origin)) {
+                    null -> {
+                        geoRemember = true
+                        geoRequest = origin to cb
+                    }
+                    true -> onGeoAllow(origin, cb)
+                    false -> cb.invoke(origin, false, false)
+                }
+            },
+            {
+                geoRequest?.let { (o, cb) -> cb.invoke(o, false, false) }
+                geoRequest = null
+            }
         ).also { WebViewThemeHelper.apply(it, dark) }
 
     fun exitFullscreen() {
@@ -1158,6 +1248,52 @@ private fun BrowserScreen(
                 }
             }
         }
+        // 地址栏建议下拉：本地历史/收藏 + 引擎 suggest，点按直接加载/检索
+        if (addressFocused && suggestions.isNotEmpty()) {
+            Surface(
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 4.dp,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    Modifier.fillMaxWidth().heightIn(max = 320.dp).verticalScroll(rememberScrollState())
+                ) {
+                    suggestions.forEach { s ->
+                        Row(
+                            Modifier.fillMaxWidth().clickable {
+                                commitAddress(if (s.kind == Suggest.Kind.SEARCH) s.text else s.url)
+                                rootFocus.clearFocus()
+                            }.padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                when (s.kind) {
+                                    Suggest.Kind.HISTORY -> Icons.Default.Refresh
+                                    Suggest.Kind.BOOKMARK -> Icons.Default.Star
+                                    Suggest.Kind.SEARCH -> Icons.Default.Search
+                                },
+                                null,
+                                tint = Color.Gray,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(Modifier.width(10.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(s.text, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                if (s.url.isNotBlank()) {
+                                    Text(
+                                        s.url,
+                                        fontSize = 11.sp,
+                                        color = Color.Gray,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
         if (activeTab.isLoading || activeTab.progress in 1..99) {
             LinearProgressIndicator(
                 progress = { activeTab.progress / 100f },
@@ -1430,6 +1566,42 @@ private fun BrowserScreen(
     }
 
     // ---------- 长按菜单 / 看图模式 / 页面信息 / 扫码结果 ----------
+    // 网页定位来源确认框：允许/拒绝 + 记住选择；允许后再走系统运行时权限
+    geoRequest?.let { (origin, cb) ->
+        AlertDialog(
+            onDismissRequest = {
+                geoRequest = null
+                cb.invoke(origin, false, false)
+            },
+            title = { Text("定位权限请求") },
+            text = {
+                Column {
+                    Text("以下网站请求获取您的位置：", fontSize = 13.sp)
+                    Spacer(Modifier.height(4.dp))
+                    Text(origin, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    Spacer(Modifier.height(8.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = geoRemember, onCheckedChange = { geoRemember = it })
+                        Text("记住此选择", fontSize = 13.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    if (geoRemember) GeoStore.remember(origin, true)
+                    geoRequest = null
+                    onGeoAllow(origin, cb)
+                }) { Text("允许") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    if (geoRemember) GeoStore.remember(origin, false)
+                    geoRequest = null
+                    cb.invoke(origin, false, false)
+                }) { Text("拒绝") }
+            }
+        )
+    }
     ctxMenu?.let { info ->
         ContextMenuSheet(info, onAction = { handleCtx(it) }, onDismiss = { ctxMenu = null })
     }

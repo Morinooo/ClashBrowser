@@ -17,6 +17,25 @@ installed apps can always upgrade; only `versionName` / tags were reorganized.
 1.7.0→1.14.0. GitHub releases were retagged accordingly (v1.13.0 / v1.13.1 /
 v1.13.2 / v1.14.0); older history never had published releases.
 
+## [1.16.0] — versionCode 24
+
+### Added
+- Address-bar search suggestions / autocomplete: while typing, a dropdown shows
+  local history/bookmark matches plus the current engine's suggest endpoint
+  (Google / Bing / Baidu / DuckDuckGo), 250 ms debounce with cancellable
+  requests, capped at 8 rows; tapping a row loads the URL or runs the search.
+  Disabled in incognito; toggle in Toolbox → More (default on). Suggest traffic
+  uses the same direct channel as subscription fetches.
+- Geolocation API support: `onGeolocationPermissionsShowPrompt` opens an origin
+  confirmation dialog (allow / deny + remember choice); allowing then requests
+  the system runtime permission (ACCESS_FINE/COARSE_LOCATION, added to the
+  manifest). Decisions persist per origin (GeoStore); Toolbox → More →
+  定位权限记录 lists them with per-row delete and clear-all (both confirmed).
+  Runtime denial revokes a stored allow; hide-prompt cancels the callback.
+
+### Notes
+- In-page find (清单 item 6) already shipped in 1.15.0; no change this round.
+
 ## [1.15.1] — versionCode 23
 
 ### Fixed

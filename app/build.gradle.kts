@@ -15,8 +15,8 @@ android {
         applicationId = "com.jomo.clashbrowser"
         minSdk = 26
         targetSdk = 34
-        versionCode = 23
-        versionName = "1.15.1"
+        versionCode = 24
+        versionName = "1.16.0"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
@@ -165,4 +165,6 @@ dependencies {
     implementation("org.yaml:snakeyaml:2.2")
     implementation("com.google.zxing:core:3.5.3")
     testImplementation("junit:junit:4.13.2")
+    // 单测用真实 org.json（android.jar 中为空桩），供 Suggest 解析单测
+    testImplementation("org.json:json:20240303")
 }
