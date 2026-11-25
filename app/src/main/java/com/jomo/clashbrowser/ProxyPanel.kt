@@ -87,6 +87,7 @@ import java.util.Locale
 @Composable
 fun ProxyPanel(
     proxyEnabled: Boolean,
+    proxyReady: Boolean,
     onProxyEnabledChange: (Boolean) -> Unit,
     onProxyReadyChange: (Boolean) -> Unit
 ) {
@@ -191,23 +192,33 @@ fun ProxyPanel(
                 ) {
                     Text("启用代理", fontSize = 13.sp, modifier = Modifier.weight(1f))
                     Switch(
-                        checked = proxyEnabled,
+                        checked = proxyEnabled && proxyReady,
                         enabled = !busy,
                         onCheckedChange = { enable ->
                             scope.launch {
                                 busy = true
-                                ProxyManager.setProxyEnabled(enable)
-                                onProxyEnabledChange(enable)
                                 if (enable) {
+                                    // 先启动内核并绑定 WebView 代理，全部就绪后才持久化"启用"，
+                                    // 失败则回滚开关，杜绝"开关显示开、实际直连"的静默失败
                                     val ok = ProxyManager.start()
                                     val pr = if (ok) WebViewProxyHelper.applyProxy(context) else false
-                                    onProxyReadyChange(pr)
-                                    if (ok) {
+                                    if (ok && pr) {
+                                        ProxyManager.setProxyEnabled(true)
+                                        onProxyEnabledChange(true)
+                                        onProxyReadyChange(true)
                                         ProxyManager.setMode(ProxyManager.preferredMode())
                                         refresh()
+                                        toast("代理已启用")
+                                    } else {
+                                        if (ok) ProxyManager.shutdown()
+                                        ProxyManager.setProxyEnabled(false)
+                                        onProxyEnabledChange(false)
+                                        onProxyReadyChange(false)
+                                        toast("内核启动失败，代理未启用，当前直连")
                                     }
-                                    toast(if (ok) "代理已启用" else "内核启动失败，请查看日志")
                                 } else {
+                                    ProxyManager.setProxyEnabled(false)
+                                    onProxyEnabledChange(false)
                                     WebViewProxyHelper.clearProxy(context)
                                     ProxyManager.shutdown()
                                     onProxyReadyChange(false)

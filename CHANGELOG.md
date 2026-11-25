@@ -3,7 +3,18 @@
 All notable user-visible changes to ClashBrowser. This file is derived from the
 in-app changelog shipped with the app; dates are not recorded there and are
 therefore omitted. The project uses `versionName` / `versionCode` pairs
-(`1.6.7` / `18` as of the latest release). There was no `1.5.x` release.
+(`1.6.8` / `19` as of the latest release). There was no `1.5.x` release.
+
+## [1.6.8] — versionCode 19
+
+### Fixed
+- Proxy fail-open: the enabled preference is persisted only after the core is
+  running and the WebView proxy override is applied; a failed enable attempt
+  rolls the switch back and states clearly that traffic is direct.
+- Cold-start and resume-to-foreground core failures roll back the enabled
+  preference instead of leaving the switch on while WebView runs direct.
+- The proxy switch and the top banner reflect the actual running state (core
+  stopped / proxy not ready) instead of only the stored intent.
 
 ## [1.6.7] — versionCode 18
 

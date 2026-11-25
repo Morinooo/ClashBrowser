@@ -217,7 +217,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## 当前开发状态
 
-版本 **1.6.7**（`versionCode 18`），持续开发中。
+版本 **1.6.8**（`versionCode 19`），持续开发中。
 
 | 模块 | 状态 |
 |---|---|

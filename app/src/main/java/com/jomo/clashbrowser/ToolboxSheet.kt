@@ -633,7 +633,7 @@ fun ToolboxSheet(
                     Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())
                 ) {
                     Text("ClashBrowser", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("v1.6.7 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
+                    Text("v1.6.8 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
                     Text("Made by Morin with Qwen.", fontSize = 11.sp, color = Color.Gray)
                     Spacer(Modifier.height(16.dp))
 
@@ -650,7 +650,12 @@ fun ToolboxSheet(
                     Text("更新记录", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Spacer(Modifier.height(6.dp))
                     ChangelogBlock(
-                        "v1.6.7（当前）",
+                        "v1.6.8（当前）",
+                        "修复代理启用失败却静默直连：启用态仅在内核与 WebView 代理均就绪后持久化，失败回滚开关并明确提示直连；" +
+                            "开关与页顶横幅按内核实际状态显示「实际运行」；冷启动/回前台启动失败自动回退直连并提示。"
+                    )
+                    ChangelogBlock(
+                        "v1.6.7",
                         "网页内点击打开新页面默认新建标签、不覆盖当前页，工具箱-更多新增「新页面在新标签打开」开关；" +
                             "收藏当前页时弹窗选择目标文件夹（根目录或自建文件夹，按层级展示）；" +
                             "长按书签菜单新增「移动」，可把书签移入任意文件夹。"

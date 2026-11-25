@@ -219,7 +219,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Current status
 
-Version **1.6.7** (`versionCode 18`), actively developed.
+Version **1.6.8** (`versionCode 19`), actively developed.
 
 | Area | Status |
 |---|---|

@@ -639,11 +639,26 @@ private fun BrowserScreen(
     LaunchedEffect(Unit) {
         if (ProxyManager.isProxyEnabled()) {
             val ok = ProxyManager.start()
-            proxyReady = if (ok) WebViewProxyHelper.applyProxy(context) else false
+            val pr = if (ok) WebViewProxyHelper.applyProxy(context) else false
+            if (ok && pr) {
+                proxyReady = true
+            } else {
+                // 冷启动失败：回滚启用态，避免开关显示开而实际直连
+                if (ok) ProxyManager.shutdown()
+                ProxyManager.setProxyEnabled(false)
+                proxyEnabled = false
+                proxyReady = false
+                Toast.makeText(context, "内核启动失败，已切换为直连", Toast.LENGTH_SHORT).show()
+            }
         } else {
             proxyReady = false
         }
         bootDone = true
+    }
+
+    // 内核停止（被查杀/重启失败）时同步就绪态：开关与红点反映"实际运行"，而非仅"想启用"
+    LaunchedEffect(coreState) {
+        if (coreState == CoreState.STOPPED) proxyReady = false
     }
 
     LaunchedEffect(activeTab.id, activeTab.url, activeTab.navVersion, addressFocused) {
@@ -666,7 +681,16 @@ private fun BrowserScreen(
                     ) {
                         scope.launch {
                             val ok = ProxyManager.start()
-                            proxyReady = if (ok) WebViewProxyHelper.applyProxy(context) else false
+                            val pr = if (ok) WebViewProxyHelper.applyProxy(context) else false
+                            if (ok && pr) {
+                                proxyReady = true
+                            } else {
+                                if (ok) ProxyManager.shutdown()
+                                ProxyManager.setProxyEnabled(false)
+                                proxyEnabled = false
+                                proxyReady = false
+                                Toast.makeText(context, "内核启动失败，已切换为直连", Toast.LENGTH_SHORT).show()
+                            }
                         }
                     }
                 }
@@ -985,7 +1009,8 @@ private fun BrowserScreen(
                 ) {
                     Text(
                         if (!proxyEnabled) "代理已关闭 · 直连模式（点右上红点开启）"
-                        else "代理未运行，当前为直连模式（点击右上红点配置）",
+                        else if (coreState != CoreState.RUNNING) "内核未运行 · 自动重启中，网页暂不可用（点右上红点查看日志）"
+                        else "代理未就绪 · 当前直连（点右上红点配置）",
                         fontSize = 12.sp,
                         color = themeColor(Color(0xFF8D6E63), Color(0xFFD7B98E)),
                         textAlign = TextAlign.Center,
@@ -1100,6 +1125,7 @@ private fun BrowserScreen(
         ) {
             ProxyPanel(
                 proxyEnabled = proxyEnabled,
+                proxyReady = proxyReady,
                 onProxyEnabledChange = { proxyEnabled = it },
                 onProxyReadyChange = { proxyReady = it }
             )
