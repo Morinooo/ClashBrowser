@@ -29,8 +29,7 @@ Thumbs.db
 
 # Build-time downloaded third-party binaries (see NOTICE / SECURITY.md)
 app/src/main/jniLibs/arm64-v8a/libmihomo.so
-app/src/main/assets/Country.mmdb
-app/src/main/assets/geosite.dat
+# Geo databases are vendored at pinned SHA-256 since v1.16.1 (supply-chain lock)
 
 # Local toolchain used by maintainers for verification builds
 .tooling/
