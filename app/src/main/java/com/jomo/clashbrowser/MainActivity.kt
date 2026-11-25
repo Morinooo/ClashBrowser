@@ -54,6 +54,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -65,7 +67,10 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -256,7 +261,7 @@ class MainActivity : ComponentActivity() {
 }
 
 /** 单个标签页的可观察状态。WebView 实例懒创建、切页不销毁。 */
-class TabState(val id: Int) {
+class TabState(val id: Int, val incognito: Boolean = false) {
     var webView: WebView? = null
     var url by mutableStateOf(HOME_MARKER)
     var title by mutableStateOf("新标签页")
@@ -273,7 +278,52 @@ class TabState(val id: Int) {
 /** 本地主页标记：标签 url 等于此值时显示 Compose 主页而非 WebView。 */
 const val HOME_MARKER = "about:home"
 
-private const val GOOGLE_URL = "https://www.google.com"
+/** 阅读模式提取结果。 */
+private data class ReaderDoc(val title: String, val paras: List<String>)
+
+/** 桌面模式：覆写 viewport meta 为桌面宽度，配合 wideViewPort/overview 得到真桌面布局。 */
+private const val DESKTOP_VIEWPORT_SCRIPT = """
+(function () {
+  try {
+    var m = document.querySelector('meta[name="viewport"]');
+    if (!m) {
+      m = document.createElement('meta');
+      m.name = 'viewport';
+      document.head.appendChild(m);
+    }
+    m.content = 'width=1024, initial-scale=1';
+  } catch (e) {}
+})();
+"""
+
+/** 阅读模式：克隆 DOM 去除噪声节点后提取正文段落（不改动活页面）。 */
+private const val READER_SCRIPT = """
+(function () {
+  try {
+    var d = document.cloneNode(true);
+    var noise = d.querySelectorAll('script,style,noscript,iframe,nav,aside,footer,header,form,button,svg,link,meta');
+    for (var i = 0; i < noise.length; i++) noise[i].parentNode.removeChild(noise[i]);
+    var root = d.querySelector('article') || d.querySelector('[role="main"]') || d.querySelector('main') || d.body;
+    var paras = [];
+    if (root) {
+      var nodes = root.querySelectorAll('p,h1,h2,h3,h4,h5,li,pre,blockquote');
+      for (var j = 0; j < nodes.length && paras.length < 600; j++) {
+        var s = (nodes[j].textContent || '').trim();
+        if (s.length > 1) paras.push(s.slice(0, 2000));
+      }
+      if (paras.length < 3) {
+        paras = ((root.textContent || '').split(/\n{2,}/))
+          .map(function (x) { return x.trim(); })
+          .filter(function (x) { return x.length > 1; })
+          .slice(0, 600);
+      }
+    }
+    return { title: document.title || '', paras: paras };
+  } catch (e) {
+    return { title: '', paras: [] };
+  }
+})()
+"""
 
 /**
  * WebView 的 EME 探测在权限未被宿主响应时会永久挂起，播放器超时报
@@ -362,15 +412,25 @@ private fun unwrapActivity(context: android.content.Context): android.app.Activi
 }
 
 private fun isHomeUrl(url: String): Boolean =
-    url == HOME_MARKER || url.isBlank() ||
-        url == GOOGLE_URL || url == "$GOOGLE_URL/"
+    url == HOME_MARKER || url.isBlank()
 
-internal fun toLoadUrl(input: String): String {
+/** 搜索引擎检索地址（纯函数，供单测）。 */
+internal fun engineSearchUrl(engine: String, query: String): String {
+    val q = URLEncoder.encode(query, "UTF-8")
+    return when (engine) {
+        "bing" -> "https://www.bing.com/search?q=$q"
+        "baidu" -> "https://www.baidu.com/s?wd=$q"
+        "duckduckgo" -> "https://duckduckgo.com/?q=$q"
+        else -> "https://www.google.com/search?q=$q"
+    }
+}
+
+internal fun toLoadUrl(input: String, engine: String = "google"): String {
     val t = input.trim()
     if (t.isEmpty()) return HOME_MARKER
     if (t.startsWith("http://") || t.startsWith("https://")) return t
     if (!t.contains(' ') && t.contains('.')) return "https://$t"
-    return "$GOOGLE_URL/search?q=" + URLEncoder.encode(t, "UTF-8")
+    return engineSearchUrl(engine, t)
 }
 
 const val DESKTOP_UA =
@@ -383,7 +443,8 @@ private fun createWebView(
     onTouchDown: () -> Unit = {},
     onLongCtx: (CtxInfo) -> Unit = {},
     onWindowOpen: (android.os.Message) -> Boolean = { false },
-    onFileChooser: (WebChromeClient.FileChooserParams, ValueCallback<Array<Uri>>) -> Unit = { _, cb -> cb.onReceiveValue(null) }
+    onFileChooser: (WebChromeClient.FileChooserParams, ValueCallback<Array<Uri>>) -> Unit = { _, cb -> cb.onReceiveValue(null) },
+    onFindResult: (Int, Int) -> Unit = { _, _ -> }
 ): WebView {
     val wv = SecureWebView(context)
     // 触摸网页内容（含空白处）即收起地址栏输入焦点；返回 false 不影响网页自身交互
@@ -443,9 +504,13 @@ private fun createWebView(
         javaScriptCanOpenWindowsAutomatically = true
         mediaPlaybackRequiresUserGesture = false
         mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
-        cacheMode = WebSettings.LOAD_DEFAULT
+        cacheMode = if (tab.incognito) WebSettings.LOAD_NO_CACHE else WebSettings.LOAD_DEFAULT
         userAgentString = if (ProxyManager.isDesktopUa()) DESKTOP_UA
         else mobileUa(context)
+    }
+    // 页内查找计数回传
+    wv.setFindListener { ordinal, total, done ->
+        if (done) onFindResult(ordinal, total)
     }
     // DRM 许可证与跨域 CDN 鉴权依赖 Cookie（含第三方 Cookie）
     CookieManager.getInstance().apply {
@@ -463,7 +528,10 @@ private fun createWebView(
     }
     wv.webViewClient = object : WebViewClient() {
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
-            return if (AdBlocker.shouldBlock(request.url.toString())) AdBlocker.emptyResponse() else null
+            val url = request.url.toString()
+            if (AdBlocker.shouldBlock(url)) return AdBlocker.emptyResponse()
+            SnifferStore.record(tab.id.toString(), url)
+            return null
         }
 
         override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
@@ -483,7 +551,11 @@ private fun createWebView(
             tab.title = view.title?.takeIf { it.isNotBlank() } ?: url ?: "新标签页"
             if (url != null) tab.url = url
             tab.navVersion++
-            if (url != null) HistoryStore.record(url, view.title ?: "")
+            if (url != null) {
+                if (tab.incognito) IncognitoGuard.recordHost(url)
+                else HistoryStore.record(url, view.title ?: "")
+            }
+            if (ProxyManager.isDesktopUa()) view.evaluateJavascript(DESKTOP_VIEWPORT_SCRIPT, null)
             (view as? SecureWebView)?.installPasswordWatch()
         }
     }
@@ -577,7 +649,7 @@ private fun BrowserScreen(
     val scope = rememberCoroutineScope()
     val coreState by ProxyManager.state.collectAsState()
 
-    val tabs = remember { mutableStateListOf(TabState(0)) }
+    val tabs = remember { mutableStateListOf(TabState(0, HistoryStore.isIncognito())) }
     var nextId by remember { mutableIntStateOf(1) }
     var activeId by remember { mutableIntStateOf(0) }
     val activeTab = tabs.firstOrNull { it.id == activeId } ?: tabs.first()
@@ -598,6 +670,19 @@ private fun BrowserScreen(
     var qrResult by remember { mutableStateOf<String?>(null) }
     var showToolboxSheet by remember { mutableStateOf(false) }
     var incognito by remember { mutableStateOf(HistoryStore.isIncognito()) }
+    var findVisible by remember { mutableStateOf(false) }
+    var findText by remember { mutableStateOf("") }
+    var findOrdinal by remember { mutableIntStateOf(0) }
+    var findTotal by remember { mutableIntStateOf(0) }
+    var readerDoc by remember { mutableStateOf<ReaderDoc?>(null) }
+    var readerSp by remember { mutableIntStateOf(16) }
+
+    // 切换标签时清除上一个标签的查找高亮与计数
+    LaunchedEffect(activeId) {
+        activeTab.webView?.clearMatches()
+        findOrdinal = 0
+        findTotal = 0
+    }
 
     // WebView 重建版本号与待恢复状态（深浅色切换 / 会话恢复共用）
     var webviewEpoch by remember { mutableIntStateOf(0) }
@@ -629,7 +714,7 @@ private fun BrowserScreen(
     // 持续快照未关闭标签（恢复弹窗未决时不覆盖上次快照）
     val snapshotKey = tabs.joinToString("\u0001") { it.url + "\u0002" + it.title }
     LaunchedEffect(snapshotKey, showRestore) {
-        if (!showRestore) SessionStore.saveTabs(tabs.map { it.url to it.title })
+        if (!showRestore) SessionStore.saveTabs(tabs.filter { !it.incognito }.map { it.url to it.title })
     }
 
     fun restoreSession() {
@@ -768,7 +853,7 @@ private fun BrowserScreen(
         tab.webView ?: createWebView(
             themedContext(), tab, { rootFocus.clearFocus() }, { ctxMenu = it },
             { msg ->
-                val t = TabState(nextId++)
+                val t = TabState(nextId++, tab.incognito)
                 tabs.add(t)
                 val wv = obtainWebView(t)
                 (msg.obj as? WebView.WebViewTransport)?.webView = wv
@@ -776,7 +861,8 @@ private fun BrowserScreen(
                 activeId = t.id
                 true
             },
-            onFileChooser
+            onFileChooser,
+            { o, t -> findOrdinal = o; findTotal = t }
         ).also { WebViewThemeHelper.apply(it, dark) }
 
     fun exitFullscreen() {
@@ -791,7 +877,7 @@ private fun BrowserScreen(
     }
 
     fun commitAddress(text: String) {
-        val target = toLoadUrl(text)
+        val target = toLoadUrl(text, ProxyManager.searchEngine())
         if (target == HOME_MARKER) {
             goHome()
             return
@@ -802,13 +888,36 @@ private fun BrowserScreen(
         activeTab.url = target
     }
 
+    // ---------- 阅读模式提取 ----------
+    fun extractReader() {
+        val wv = activeTab.webView
+        if (wv == null || isHomeUrl(activeTab.url)) {
+            Toast.makeText(context, "当前页面不支持阅读模式", Toast.LENGTH_SHORT).show()
+            return
+        }
+        wv.evaluateJavascript(READER_SCRIPT) { raw ->
+            val doc = runCatching {
+                val o = org.json.JSONObject(raw)
+                val arr = o.optJSONArray("paras") ?: org.json.JSONArray()
+                val paras = (0 until arr.length()).map { arr.getString(it) }
+                if (paras.isEmpty()) null else ReaderDoc(o.optString("title"), paras)
+            }.getOrNull()
+            if (doc == null) {
+                Toast.makeText(context, "未能提取到正文", Toast.LENGTH_SHORT).show()
+            } else {
+                readerDoc = doc
+                showToolboxSheet = false
+            }
+        }
+    }
+
     // ---------- 长按上下文菜单动作 ----------
     fun handleCtx(action: CtxAction) {
         val info = ctxMenu ?: return
         ctxMenu = null
         when (action) {
             CtxAction.BACKGROUND, CtxAction.NEW_TAB -> {
-                val t = TabState(nextId++)
+                val t = TabState(nextId++, HistoryStore.isIncognito())
                 tabs.add(t)
                 obtainWebView(t).loadUrl(info.linkUrl)
                 if (action == CtxAction.NEW_TAB) activeId = t.id
@@ -934,7 +1043,44 @@ private fun BrowserScreen(
                     )
                 }
             }
-            if (isHome) {
+            if (findVisible) {
+                // 页内查找条：输入即高亮计数，上/下跳转，关闭清除匹配
+                OutlinedTextField(
+                    value = findText,
+                    onValueChange = {
+                        findText = it
+                        findOrdinal = 0
+                        findTotal = 0
+                        activeTab.webView?.findAllAsync(it)
+                    },
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    textStyle = TextStyle(fontSize = 14.sp),
+                    placeholder = { Text("页内查找", fontSize = 14.sp) },
+                    shape = RoundedCornerShape(24.dp),
+                    trailingIcon = {
+                        Text(
+                            if (findText.isEmpty()) "" else "$findOrdinal/$findTotal",
+                            fontSize = 12.sp,
+                            color = Color.Gray,
+                            modifier = Modifier.padding(end = 12.dp)
+                        )
+                    }
+                )
+                IconButton(onClick = { activeTab.webView?.findNext(false) }) {
+                    Icon(Icons.Default.KeyboardArrowUp, "上一个匹配")
+                }
+                IconButton(onClick = { activeTab.webView?.findNext(true) }) {
+                    Icon(Icons.Default.KeyboardArrowDown, "下一个匹配")
+                }
+                IconButton(onClick = {
+                    findVisible = false
+                    findText = ""
+                    findOrdinal = 0
+                    findTotal = 0
+                    activeTab.webView?.clearMatches()
+                }) { Icon(Icons.Default.Close, "关闭查找") }
+            } else if (isHome) {
                 // 主页不显示地址栏，仅保留内核状态小圆（位置不变）
                 Spacer(Modifier.weight(1f))
                 proxyDot()
@@ -979,6 +1125,9 @@ private fun BrowserScreen(
                     exit = shrinkHorizontally(tween(220)) + fadeOut(tween(220))
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
+                        IconButton(onClick = { findVisible = true }) {
+                            Icon(Icons.Default.Search, "页内查找")
+                        }
                         // 刷新/停止：页顶内核小圆左侧、搜索框外；地址栏展开时随整组隐藏
                         IconButton(onClick = {
                             val wv = activeTab.webView
@@ -1065,6 +1214,48 @@ private fun BrowserScreen(
                     )
                 }
             }
+            // 阅读模式：纯净正文重排，字号可调，覆盖于网页之上
+            readerDoc?.let { doc ->
+                Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
+                        ) {
+                            Text(
+                                doc.title.ifBlank { "阅读模式" },
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            TextButton(onClick = { readerSp = (readerSp - 1).coerceAtLeast(12) }) {
+                                Text("A-", fontSize = 13.sp)
+                            }
+                            TextButton(onClick = { readerSp = (readerSp + 1).coerceAtMost(26) }) {
+                                Text("A+", fontSize = 13.sp)
+                            }
+                            IconButton(onClick = { readerDoc = null }) {
+                                Icon(Icons.Default.Close, "退出阅读模式")
+                            }
+                        }
+                        LazyColumn(
+                            Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(doc.paras) { p ->
+                                Text(
+                                    p,
+                                    fontSize = readerSp.sp,
+                                    lineHeight = (readerSp * 1.7).sp,
+                                    color = MaterialTheme.colorScheme.onBackground
+                                )
+                            }
+                        }
+                    }
+                }
+            }
         }
 
         // ---------- 底部工具栏 ----------
@@ -1090,7 +1281,7 @@ private fun BrowserScreen(
                         onClick = { showTabSheet = true },
                         onLongClick = {
                             exitFullscreen()
-                            val t = TabState(nextId++)
+                            val t = TabState(nextId++, HistoryStore.isIncognito())
                             tabs.add(t)
                             activeId = t.id
                             Toast.makeText(context, "已新建标签页", Toast.LENGTH_SHORT).show()
@@ -1138,9 +1329,13 @@ private fun BrowserScreen(
                             tab.webView?.destroy()
                             tab.webView = null
                             tabs.remove(tab)
+                            SnifferStore.forget(tab.id.toString())
+                            if (tab.incognito && tabs.none { it.incognito }) {
+                                IncognitoGuard.cleanup(activeTab.webView)
+                            }
                             if (tabs.isEmpty()) {
                                 exitFullscreen()
-                                val t = TabState(nextId++)
+                                val t = TabState(nextId++, HistoryStore.isIncognito())
                                 tabs.add(t)
                                 activeId = t.id
                             } else if (activeId == tab.id) {
@@ -1151,7 +1346,7 @@ private fun BrowserScreen(
                 }
                 TextButton(onClick = {
                     exitFullscreen()
-                    val t = TabState(nextId++)
+                    val t = TabState(nextId++, HistoryStore.isIncognito())
                     tabs.add(t)
                     activeId = t.id
                     showTabSheet = false
@@ -1184,16 +1379,23 @@ private fun BrowserScreen(
         ModalBottomSheet(onDismissRequest = { showToolboxSheet = false }) {
             ToolboxSheet(
                 incognito = incognito,
-                onIncognitoChange = { incognito = it },
+                onIncognitoChange = { on ->
+                    incognito = on
+                    if (!on) IncognitoGuard.cleanup(activeTab.webView)
+                },
                 onOpenUrl = { url ->
                     commitAddress(url)
                     showToolboxSheet = false
                 },
                 onUaChange = { desktop ->
                     val ua = if (desktop) DESKTOP_UA else mobileUa(context)
-                    tabs.forEach { t -> t.webView?.settings?.userAgentString = ua }
-                    activeTab.webView?.reload()
+                    tabs.forEach { t ->
+                        t.webView?.settings?.userAgentString = ua
+                        t.webView?.reload()
+                    }
                 },
+                tabId = activeTab.id.toString(),
+                onReaderMode = { extractReader() },
                 currentUrl = activeTab.url,
                 currentTitle = activeTab.title,
                 themeMode = themeMode,

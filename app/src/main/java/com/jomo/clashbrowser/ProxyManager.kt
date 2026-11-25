@@ -442,16 +442,24 @@ object ProxyManager {
         prefs().edit().putString("sub_meta", o.toString()).apply()
     }
 
-    /** 解析 subscription-userinfo 响应头：upload/download/total/expire。 */
-    private fun parseUserinfo(h: String?): LongArray? {
+    /** 解析 subscription-userinfo 响应头：upload/download/total/expire（秒）。
+     *  容错：键大小写、首尾空格、值引号、缺失字段、非法数值、毫秒时间戳；负值归零。 */
+    internal fun parseUserinfo(h: String?): LongArray? {
         if (h.isNullOrBlank()) return null
         val m = HashMap<String, Long>()
         h.split(";").forEach { part ->
             val kv = part.trim().split("=", limit = 2)
-            if (kv.size == 2) kv[1].trim().toLongOrNull()?.let { m[kv[0].trim()] = it }
+            if (kv.size == 2) {
+                val k = kv[0].trim().lowercase()
+                if (k != "upload" && k != "download" && k != "total" && k != "expire") return@forEach
+                val v = kv[1].trim().trim('"', '\'').toLongOrNull() ?: return@forEach
+                m[k] = v.coerceAtLeast(0L)
+            }
         }
         if (m.isEmpty()) return null
-        return longArrayOf(m["upload"] ?: 0L, m["download"] ?: 0L, m["total"] ?: 0L, m["expire"] ?: 0L)
+        var expire = m["expire"] ?: 0L
+        if (expire > 100_000_000_000L) expire /= 1000
+        return longArrayOf(m["upload"] ?: 0L, m["download"] ?: 0L, m["total"] ?: 0L, expire)
     }
 
     /** 档案名称：优先订阅响应头文件名，其次 URL 路径文件名，最后域名。 */
@@ -564,6 +572,10 @@ object ProxyManager {
 
     fun isDesktopUa(): Boolean = prefs().getBoolean("ua_desktop", false)
     fun setDesktopUa(v: Boolean) = prefs().edit().putBoolean("ua_desktop", v).apply()
+
+    /** 搜索引擎偏好：google / bing / baidu / duckduckgo。 */
+    fun searchEngine(): String = prefs().getString("search_engine", "google") ?: "google"
+    fun setSearchEngine(v: String) = prefs().edit().putString("search_engine", v).apply()
 
     /** 网页内打开新页面（target=_blank / window.open）是否默认新建标签。 */
     fun isOpenNewTab(): Boolean = prefs().getBoolean("open_new_tab", true)

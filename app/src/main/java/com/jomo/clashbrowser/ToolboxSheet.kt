@@ -36,10 +36,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
@@ -60,13 +61,17 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.graphics.vector.rememberVectorPainter
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -74,13 +79,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
  * 工具箱（BottomSheet 内容）：
- * 主页面 -> 浏览器标识 / 关于应用 两个子页面
+ * 主页面（历史/收藏/下载/阅读/嗅探/外观/更多/关于）-> 各子页面；
+ * 设置类开关（无痕/桌面/搜索引擎/订阅信息/恢复/新标签）集中在「更多」。
  */
 @Composable
 fun ToolboxSheet(
@@ -94,7 +101,9 @@ fun ToolboxSheet(
     onThemeChange: (String) -> Unit,
     onImportBookmarks: () -> Unit,
     onExportBookmarks: () -> Unit,
-    onOpenNewTabChange: (Boolean) -> Unit
+    onOpenNewTabChange: (Boolean) -> Unit,
+    tabId: String,
+    onReaderMode: () -> Unit
 ) {
     val context = LocalContext.current
     var page by remember { mutableStateOf("main") }
@@ -126,32 +135,6 @@ fun ToolboxSheet(
             Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 32.dp)
         ) {
             when (target) {
-            "ua" -> {
-                SheetHeader("浏览器标识") { page = "main" }
-                Spacer(Modifier.height(8.dp))
-                UaOption(
-                    title = "安卓手机",
-                    desc = "系统默认移动端标识，适合触屏版网页",
-                    selected = !desktopUa
-                ) {
-                    desktopUa = false
-                    ProxyManager.setDesktopUa(false)
-                    onUaChange(false)
-                    Toast.makeText(context, "已切换为安卓手机标识", Toast.LENGTH_SHORT).show()
-                }
-                Spacer(Modifier.height(8.dp))
-                UaOption(
-                    title = "电脑",
-                    desc = "Windows Chrome 标识，访问桌面版网页",
-                    selected = desktopUa
-                ) {
-                    desktopUa = true
-                    ProxyManager.setDesktopUa(true)
-                    onUaChange(true)
-                    Toast.makeText(context, "已切换为电脑标识", Toast.LENGTH_SHORT).show()
-                }
-            }
-
             "theme" -> {
                 SheetHeader("外观模式") { page = "main" }
                 Spacer(Modifier.height(8.dp))
@@ -218,6 +201,226 @@ fun ToolboxSheet(
                             openNewTab = it
                             onOpenNewTabChange(it)
                         }
+                    )
+                }
+                // 无痕隔离：不写历史/快照/缓存，退出时清除无痕访问站点的 Cookie
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("无痕模式", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            if (incognito) "开启 · 不写历史/快照/缓存，退出时清除无痕站点 Cookie"
+                            else "关闭 · 正常记录浏览历史",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
+                    Switch(
+                        checked = incognito,
+                        onCheckedChange = {
+                            HistoryStore.setIncognito(it)
+                            onIncognitoChange(it)
+                            Toast.makeText(
+                                context,
+                                if (it) "无痕模式已开启" else "无痕已退出，无痕站点 Cookie 与缓存已清除",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    )
+                }
+                // 桌面模式：UA + 真桌面视口（viewport 覆写为 1024 宽）
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("桌面模式", fontSize = 15.sp, fontWeight = FontWeight.Medium)
+                        Text(
+                            if (desktopUa) "开启 · 电脑标识 + 桌面宽度视口，访问桌面版网页"
+                            else "关闭 · 安卓手机标识与移动视口",
+                            fontSize = 12.sp,
+                            color = Color.Gray
+                        )
+                    }
+                    Switch(
+                        checked = desktopUa,
+                        onCheckedChange = {
+                            desktopUa = it
+                            ProxyManager.setDesktopUa(it)
+                            onUaChange(it)
+                            Toast.makeText(
+                                context,
+                                if (it) "已切换为桌面模式" else "已切换为移动模式",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    )
+                }
+                var engine by remember { mutableStateOf(ProxyManager.searchEngine()) }
+                ToolboxRow(
+                    icon = Icons.Default.Search,
+                    title = "搜索引擎",
+                    desc = when (engine) {
+                        "bing" -> "当前：Bing"
+                        "baidu" -> "当前：百度"
+                        "duckduckgo" -> "当前：DuckDuckGo"
+                        else -> "当前：Google"
+                    }
+                ) { page = "engine" }
+                Spacer(Modifier.height(4.dp))
+                ToolboxRow(
+                    icon = Icons.Default.DateRange,
+                    title = "订阅信息",
+                    desc = "流量/到期解析详情与手动刷新"
+                ) { page = "subinfo" }
+            }
+
+            "engine" -> {
+                SheetHeader("搜索引擎") { page = "more" }
+                Spacer(Modifier.height(8.dp))
+                var engineSel by remember { mutableStateOf(ProxyManager.searchEngine()) }
+                listOf(
+                    Triple("google", "Google", "默认引擎，境外检索质量佳"),
+                    Triple("bing", "Bing", "微软必应，国内可直连"),
+                    Triple("baidu", "百度", "国内中文检索"),
+                    Triple("duckduckgo", "DuckDuckGo", "强调隐私、不追踪检索词")
+                ).forEach { (key, title, desc) ->
+                    UaOption(title = title, desc = desc, selected = engineSel == key) {
+                        engineSel = key
+                        ProxyManager.setSearchEngine(key)
+                        Toast.makeText(context, "搜索引擎已切换：$title", Toast.LENGTH_SHORT).show()
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                Text(
+                    "地址栏与主页搜索框的非网址输入将使用该引擎检索",
+                    fontSize = 11.sp,
+                    color = Color.Gray
+                )
+            }
+
+            "subinfo" -> {
+                SheetHeader("订阅信息") { page = "more" }
+                Spacer(Modifier.height(8.dp))
+                var tick by remember { mutableIntStateOf(0) }
+                var refreshing by remember { mutableStateOf(false) }
+                val subScope = rememberCoroutineScope()
+                val active = remember(tick) { ProxyManager.listProfiles().firstOrNull { it.active } }
+                if (active == null) {
+                    Text("暂无订阅档案：请先在代理面板导入订阅", fontSize = 13.sp, color = Color.Gray)
+                } else {
+                    Text(active.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                    Spacer(Modifier.height(8.dp))
+                    AboutLine("上传 / 下载", "${DownloadStore.fmtSize(active.upload)} / ${DownloadStore.fmtSize(active.download)}")
+                    AboutLine("总量", if (active.total > 0) DownloadStore.fmtSize(active.total) else "未知（机场未提供）")
+                    AboutLine(
+                        "到期",
+                        if (active.expire > 0) SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(active.expire * 1000))
+                        else "未知（机场未提供）"
+                    )
+                    AboutLine(
+                        "更新时间",
+                        if (active.updated > 0) SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date(active.updated))
+                        else "未知"
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        enabled = !refreshing,
+                        onClick = {
+                            refreshing = true
+                            subScope.launch {
+                                val err = ProxyManager.updateSubscription(active.url)
+                                refreshing = false
+                                tick++
+                                Toast.makeText(context, err ?: "订阅信息已刷新", Toast.LENGTH_SHORT).show()
+                            }
+                        }
+                    ) { Text(if (refreshing) "刷新中…" else "刷新订阅信息", fontSize = 13.sp) }
+                    Text(
+                        "解析容错：键大小写、空格、引号、缺失字段、非法数值与毫秒时间戳均已兼容",
+                        fontSize = 11.sp,
+                        color = Color.Gray
+                    )
+                }
+            }
+
+            "sniffer" -> {
+                SheetHeader("资源嗅探") { page = "main" }
+                Spacer(Modifier.height(8.dp))
+                val sv by SnifferStore.version.collectAsState()
+                val sniffItems = remember(sv, tabId) { SnifferStore.list(tabId) }
+                var sniffClearAsk by remember { mutableStateOf(false) }
+                if (sniffItems.isEmpty()) {
+                    Text(
+                        "当前标签暂无嗅探到的媒体资源；播放视频/音频后这里会列出流地址",
+                        fontSize = 13.sp,
+                        color = Color.Gray
+                    )
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = { sniffClearAsk = true }) {
+                            Text("清空", fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+                        }
+                    }
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(sniffItems) { s ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .padding(12.dp)
+                            ) {
+                                Text(
+                                    s.kind + " · " + SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(s.time)),
+                                    fontSize = 11.sp,
+                                    color = Color.Gray
+                                )
+                                Text(s.url, fontSize = 12.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    TextButton(onClick = {
+                                        val cm = context.getSystemService(android.content.ClipboardManager::class.java)
+                                        cm.setPrimaryClip(android.content.ClipData.newPlainText("ClashBrowser", s.url))
+                                        Toast.makeText(context, "已复制", Toast.LENGTH_SHORT).show()
+                                    }) { Text("复制", fontSize = 13.sp) }
+                                    TextButton(onClick = {
+                                        DownloadStore.enqueue(
+                                            s.url, null, null,
+                                            if (s.kind == "音频") "audio/mpeg" else "video/mp4",
+                                            -1
+                                        )
+                                        Toast.makeText(context, "已加入下载管理", Toast.LENGTH_SHORT).show()
+                                    }) { Text("下载", fontSize = 13.sp) }
+                                    TextButton(onClick = {
+                                        val intent = android.content.Intent(android.content.Intent.ACTION_VIEW).apply {
+                                            setDataAndType(
+                                                android.net.Uri.parse(s.url),
+                                                if (s.kind == "音频") "audio/*" else "video/*"
+                                            )
+                                        }
+                                        runCatching { context.startActivity(intent) }.onFailure {
+                                            Toast.makeText(context, "没有可播放该资源的应用", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }) { Text("打开", fontSize = 13.sp) }
+                                }
+                            }
+                        }
+                    }
+                }
+                if (sniffClearAsk) {
+                    AlertDialog(
+                        onDismissRequest = { sniffClearAsk = false },
+                        title = { Text("确认清空") },
+                        text = { Text("将清空当前标签的嗅探记录，不可恢复。", fontSize = 14.sp) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                SnifferStore.clear(tabId)
+                                sniffClearAsk = false
+                            }) { Text("清空", color = MaterialTheme.colorScheme.error) }
+                        },
+                        dismissButton = { TextButton(onClick = { sniffClearAsk = false }) { Text("取消") } }
                     )
                 }
             }
@@ -715,7 +918,7 @@ fun ToolboxSheet(
                     Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())
                 ) {
                     Text("ClashBrowser", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("v1.7.0 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
+                    Text("v1.15.0 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
                     Text("Made by Morin with Qwen.", fontSize = 11.sp, color = Color.Gray)
                     Spacer(Modifier.height(16.dp))
 
@@ -731,36 +934,48 @@ fun ToolboxSheet(
 
                     Text("更新记录", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Spacer(Modifier.height(6.dp))
+                    Text(
+                        "版本号已按 semver 梳理：新增功能=次版本、修复=修订号；旧号对照见仓库 CHANGELOG。",
+                        fontSize = 11.sp,
+                        color = Color.Gray
+                    )
+                    Spacer(Modifier.height(6.dp))
                     ChangelogBlock(
-                        "v1.7.0（当前）",
+                        "v1.15.0（当前）",
+                        "新增页内查找（高亮计数/上下跳转）、阅读模式（正文重排/字号可调）、资源嗅探（媒体流列表/复制/下载/打开）；" +
+                            "工具箱-更多整合四项设置：搜索引擎可选、桌面模式真视口、无痕隔离（退出清 Cookie/缓存）、订阅信息解析加固与刷新；" +
+                            "下载管理保持独立入口；历史版本号按 semver 重排。"
+                    )
+                    ChangelogBlock(
+                        "v1.14.0",
                         "新增下载管理器：接管网页非图片下载，任务列表含进度/失败重试/打开/删除，API29+ 存入系统 Download/ClashBrowser，" +
                             "旧系统存入应用私有目录免存储权限；新增文件上传：网页 input type=file 唤起系统文件选择器（含多选）。"
                     )
                     ChangelogBlock(
-                        "v1.6.9",
+                        "v1.13.2",
                         "导入订阅/本地配置时拒绝指向本机 7890 的回环代理节点（防代理自环），port/socks-port 强制归零防端口冲突；" +
                             "NOTICE 中 mihomo 许可署名修正为 GPL-3.0；新增 JVM 单元测试（广告拦截、配置校验、地址解析）与 CI lint 门禁。"
                     )
                     ChangelogBlock(
-                        "v1.6.8",
+                        "v1.13.1",
                         "修复代理启用失败却静默直连：启用态仅在内核与 WebView 代理均就绪后持久化，失败回滚开关并明确提示直连；" +
                             "开关与页顶横幅按内核实际状态显示「实际运行」；冷启动/回前台启动失败自动回退直连并提示。"
                     )
                     ChangelogBlock(
-                        "v1.6.7",
+                        "v1.13.0",
                         "网页内点击打开新页面默认新建标签、不覆盖当前页，工具箱-更多新增「新页面在新标签打开」开关；" +
                             "收藏当前页时弹窗选择目标文件夹（根目录或自建文件夹，按层级展示）；" +
                             "长按书签菜单新增「移动」，可把书签移入任意文件夹。"
                     )
                     ChangelogBlock(
-                        "v1.6.6",
+                        "v1.12.0",
                         "任意页面长按可点击对象弹出上下文菜单：后台打开、新标签打开、查看图片、保存图片、" +
                             "下载图片、分享图片、看图模式（页面图片网格+全屏浏览）、页面信息、标记广告（自定义拦截域名）、" +
                             "复制链接文本、扫描二维码、复制链接、分享；菜单按链接/图片/普通元素动态给出；" +
                             "图片拉取与 WebView 同走应用内代理。"
                     )
                     ChangelogBlock(
-                        "v1.6.5",
+                        "v1.11.1",
                         "DRM 加密视频播放修复：放行网页受保护媒体权限请求（RESOURCE_PROTECTED_MEDIA_ID，" +
                             "主线程 grant）；启用全局与第三方 Cookie 保障许可证/跨域 CDN 鉴权；" +
                             "移动端标识去除内嵌 WebView 标记、保留标准 Android Chrome UA；" +
@@ -768,88 +983,88 @@ fun ToolboxSheet(
                             "EME 探测改为 4 秒限时等待，权限放行后优先走系统 Widevine，挂起环境才回退非加密流。"
                     )
                     ChangelogBlock(
-                        "v1.6.4",
+                        "v1.11.0",
                         "修复部分在线视频报\u201c不支持这种媒体类型/请开启 DRM\u201d无法播放：" +
                             "WebView 内 DRM 探测永久挂起时改为快速回退非加密流；新增网页视频全屏播放支持；" +
                             "媒体流与切片不再被广告拦截误伤；底栏调整为后退/前进/主页/标签/工具箱，" +
                             "刷新按钮移至页顶内核小圆左侧，地址栏展开时自动隐藏、收缩后复原。"
                     )
                     ChangelogBlock(
-                        "v1.6.3",
+                        "v1.10.0",
                         "打开网页后点地址栏默认全选框内内容，直接输入即可覆盖；" +
                             "收藏夹支持多级文件夹：新建/重命名/嵌套子文件夹，导入书签文件保留原有文件夹层级；" +
                             "长按书签或文件夹弹出菜单：修改名称、修改网址、删除、多选、删除全部书签，" +
                             "所有删除操作均需二次弹窗确认。"
                     )
                     ChangelogBlock(
-                        "v1.6.2",
+                        "v1.9.0",
                         "任何页面点开顶部搜索框后，点网页空白处即可退出输入，未输入新网址时当前网页保持不动；" +
                             "收藏夹新增书签导入/导出：可导出为通用书签文件，也可从 Via、Chrome、Firefox 等" +
                             "浏览器导出的书签文件一键导入，自动去重并按既有格式编排。"
                     )
                     ChangelogBlock(
-                        "v1.6.1",
+                        "v1.8.0",
                         "主页点空白处即可收起键盘；主页隐藏页顶搜索框、仅保留内核状态小圆，" +
                             "打开网页后地址栏恢复显示当前网址；长按主页圆形图标可编辑：" +
                             "从主页移除、自定义图标字母、对应网址与显示名称。"
                     )
                     ChangelogBlock(
-                        "v1.6.0",
+                        "v1.7.0",
                         "全新本地主页：浏览器图标 + 搜索框 + 可自选的收藏夹圆形图标（最多 8 个），" +
                             "新建标签与回到主页均打开主页；顶部搜索框聚焦时动画扩展占满页顶并带清空按钮；" +
                             "工具箱新增「更多」页，可开关意外退出时恢复页面；关于页新增开源声明。"
                     )
                     ChangelogBlock(
-                        "v1.4.5",
+                        "v1.6.2",
                         "配置页改为卡片式档案管理：名称、流量用量、到期日期、用量进度条、" +
                             "更新时间一目了然，点卡片切换配置，菜单更新/删除；应用图标改为灰白配色；" +
                             "移除模式切换的提示文字与底部弹窗。"
                     )
                     ChangelogBlock(
-                        "v1.4.4",
+                        "v1.6.1",
                         "代理模式语义优化：全局模式所有流量经 GLOBAL 组转发（覆盖订阅规则，" +
                             "GLOBAL 选中直连时自动改选真实节点）；规则模式按订阅规则分流" +
                             "（国内直连、境外代理），节点面板不再显示 GLOBAL 组；新增模式说明文字。"
                     )
                     ChangelogBlock(
-                        "v1.4.3",
+                        "v1.6.0",
                         "安全键盘调起加固：密码框获焦自动重建输入连接并重新弹出键盘，" +
                             "一次点击即稳定调起系统安全键盘；新增意外关闭恢复：应用被直接杀后台后" +
                             "再次打开时弹窗询问是否恢复上次未关闭的页面（弹窗跟随应用主题）。"
                     )
                     ChangelogBlock(
-                        "v1.4.2",
+                        "v1.5.0",
                         "新增深/浅色/跟随系统外观切换，网页同步深浅色（保留标签历史）；" +
                             "后台占用精简：挂后台暂停网页定时器与渲染、收紧网络空闲连接池、移除未使用依赖。"
                     )
                     ChangelogBlock(
-                        "v1.4.1",
+                        "v1.4.0",
                         "密码输入改写为原生密码类型，可触发 vivo 等系统安全键盘；" +
                             "工具箱新增收藏夹：收藏当前页、搜索、打开与删除，统一管理常用页面。"
                     )
                     ChangelogBlock(
-                        "v1.4",
+                        "v1.3.1",
                         "修复挂后台一段时间后内核被系统查杀导致的\u201c内核未运行/配置消失\u201d问题：" +
                             "回前台自动无感重启内核、运行中被查杀自动复活、配置不再被健康检查误重置；" +
                             "节点列表改为紧凑灰白卡片，选中节点浅蓝高亮；工具箱子页面与分组展开加入轻量动画。"
                     )
                     ChangelogBlock(
-                        "v1.3",
+                        "v1.3.0",
                         "修复退出重进后代理配置丢失的问题（残留进程清理、配置原子写入与备份自愈、启动失败自动重试）；" +
                             "工具箱新增无痕模式开关与浏览记录；网页密码输入框自动调用输入法私密键盘模式。"
                     )
                     ChangelogBlock(
-                        "v1.2",
+                        "v1.2.0",
                         "节点改为卡片式展示（国旗/协议/延迟），策略组支持展开与收起；" +
                             "底部栏新增工具箱；浏览器标识切换移入工具箱；新增关于应用页。"
                     )
                     ChangelogBlock(
-                        "v1.1",
+                        "v1.1.0",
                         "新增代理总开关；全局/规则/直连模式切换；默认主页改为 Google；" +
                             "长按标签按钮快速新建标签页；新增浏览器标识（手机/电脑）切换。"
                     )
                     ChangelogBlock(
-                        "v1.0（初版）",
+                        "v1.0.0（初版）",
                         "内置 mihomo 内核与 Geo 数据库自动集成；WebView 局部代理（免 VPN）；" +
                             "广告追踪拦截；多标签浏览；订阅导入与 YAML 编辑；节点切换与批量测速；内核日志。"
                     )
@@ -872,31 +1087,6 @@ fun ToolboxSheet(
             else -> {
                 Text("工具箱", style = MaterialTheme.typography.titleMedium)
                 Spacer(Modifier.height(12.dp))
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("无痕模式", fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        Text(
-                            if (incognito) "已开启 · 不再记录浏览历史" else "关闭 · 正常记录浏览历史",
-                            fontSize = 12.sp,
-                            color = Color.Gray
-                        )
-                    }
-                    Switch(
-                        checked = incognito,
-                        onCheckedChange = {
-                            HistoryStore.setIncognito(it)
-                            onIncognitoChange(it)
-                            Toast.makeText(
-                                context,
-                                if (it) "无痕模式已开启" else "无痕模式已关闭",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    )
-                }
                 ToolboxRow(
                     icon = Icons.AutoMirrored.Filled.List,
                     title = "浏览记录",
@@ -916,6 +1106,18 @@ fun ToolboxSheet(
                 ) { page = "downloads" }
                 Spacer(Modifier.height(4.dp))
                 ToolboxRow(
+                    icon = painterResource(R.drawable.ic_reader),
+                    title = "阅读模式",
+                    desc = "提取当前页正文，纯净重排阅读"
+                ) { onReaderMode() }
+                Spacer(Modifier.height(4.dp))
+                ToolboxRow(
+                    icon = painterResource(R.drawable.ic_sniff),
+                    title = "资源嗅探",
+                    desc = "当前标签的媒体/流地址：复制、下载、打开"
+                ) { page = "sniffer" }
+                Spacer(Modifier.height(4.dp))
+                ToolboxRow(
                     icon = Icons.Default.Settings,
                     title = "外观模式",
                     desc = when (themeMode) {
@@ -926,15 +1128,9 @@ fun ToolboxSheet(
                 ) { page = "theme" }
                 Spacer(Modifier.height(4.dp))
                 ToolboxRow(
-                    icon = Icons.Default.Phone,
-                    title = "浏览器标识",
-                    desc = if (desktopUa) "当前：电脑" else "当前：安卓手机"
-                ) { page = "ua" }
-                Spacer(Modifier.height(4.dp))
-                ToolboxRow(
                     icon = Icons.Default.MoreVert,
                     title = "更多",
-                    desc = "恢复页面等更多设置"
+                    desc = "无痕/桌面/搜索引擎/订阅信息等设置"
                 ) { page = "more" }
                 Spacer(Modifier.height(4.dp))
                 ToolboxRow(
@@ -960,6 +1156,11 @@ private fun SheetHeader(title: String, onBack: () -> Unit) {
 
 @Composable
 private fun ToolboxRow(icon: ImageVector, title: String, desc: String, onClick: () -> Unit) {
+    ToolboxRow(rememberVectorPainter(icon), title, desc, onClick)
+}
+
+@Composable
+private fun ToolboxRow(icon: Painter, title: String, desc: String, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()

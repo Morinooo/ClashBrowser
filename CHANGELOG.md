@@ -2,10 +2,58 @@
 
 All notable user-visible changes to ClashBrowser. This file is derived from the
 in-app changelog shipped with the app; dates are not recorded there and are
-therefore omitted. The project uses `versionName` / `versionCode` pairs
-(`1.7.0` / `21` as of the latest release). There was no `1.5.x` release.
+therefore omitted.
 
-## [1.7.0] — versionCode 21
+**Versioning policy (semver):** `MAJOR.MINOR.PATCH` — MINOR for new features /
+performance work / new protocol support (backward compatible), PATCH for bug
+fixes, security patches and copy/UI detail tweaks, MAJOR for breaking changes
+(none so far). `versionCode` keeps its historical monotonic sequence so
+installed apps can always upgrade; only `versionName` / tags were reorganized.
+
+**Renumbering map (old → new):** 1.0→1.0.0, 1.1→1.1.0, 1.2→1.2.0, 1.3→1.3.0,
+1.4→1.3.1, 1.4.1→1.4.0, 1.4.2→1.5.0, 1.4.3→1.6.0, 1.4.4→1.6.1, 1.4.5→1.6.2,
+1.6.0→1.7.0, 1.6.1→1.8.0, 1.6.2→1.9.0, 1.6.3→1.10.0, 1.6.4→1.11.0,
+1.6.5→1.11.1, 1.6.6→1.12.0, 1.6.7→1.13.0, 1.6.8→1.13.1, 1.6.9→1.13.2,
+1.7.0→1.14.0. GitHub releases were retagged accordingly (v1.13.0 / v1.13.1 /
+v1.13.2 / v1.14.0); older history never had published releases.
+
+## [1.15.0] — versionCode 22
+
+### Added
+- In-page find: top-bar search entry opens a find bar with live match count
+  (`setFindListener`), previous/next navigation and clear-on-close; matches are
+  cleared when switching tabs.
+- Reader mode: toolbox entry extracts the article body from a cloned DOM
+  (noise nodes removed, live page untouched) into a clean full-screen reader
+  with adjustable font size (12–26 sp).
+- Media sniffer: media/stream requests (m3u8/mpd/mp4/m4s/ts/flv/webm/mkv/mp3/
+  m4a/aac/ogg/wav) are recorded per tab (dedup, cap 200) and listed in
+  Toolbox → 资源嗅探 with copy / download / open-with actions and confirmed
+  clear. URL metadata only — no response bodies, no disk writes.
+- Toolbox → More now consolidates all settings-type controls:
+  - Search engine choice (Google / Bing / Baidu / DuckDuckGo) replaces the
+    hard-coded Google search for address-bar and home-box queries.
+  - Desktop mode: desktop UA **plus** a real desktop viewport (viewport meta
+    overridden to width=1024 with wide-view-port/overview), applied to all
+    live tabs on toggle.
+  - Incognito isolation: incognito tabs write no history, no session snapshot,
+    no cache and no form data; hosts visited while incognito are tracked and
+    their cookies expired plus WebView cache cleared when incognito ends
+    (switch off or last incognito tab closed). Normal tabs' cookies untouched.
+  - Subscription info page: parsed upload/download/total/expire/updated for
+    the active profile with a manual refresh action.
+
+### Changed
+- Toolbox main list: 下载管理 stays a standalone entry; 阅读模式 / 资源嗅探
+  added; the former 浏览器标识 page and the main-page incognito switch moved
+  into More (as desktop-mode / incognito switches).
+- `subscription-userinfo` parsing hardened: key case, surrounding spaces,
+  quoted values, missing fields, non-numeric values and millisecond
+  timestamps tolerated; negatives clamped to 0. Covered by new JVM tests.
+- Version numbers reorganized per semver (see map above); in-app changelog,
+  README and release notes rewritten to the new scheme.
+
+## [1.14.0] — versionCode 21 (was 1.7.0)
 
 ### Added
 - Download manager: non-image downloads captured via `setDownloadListener`,
@@ -17,7 +65,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - File upload: `onShowFileChooser` opens the system SAF picker (multi-select)
   and returns results to `<input type="file">` pages.
 
-## [1.6.9] — versionCode 20
+## [1.13.2] — versionCode 20 (was 1.6.9)
 
 ### Fixed
 - Import validation rejects proxy nodes pointing at the local mixed port
@@ -34,7 +82,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - Android lint step in CI with a committed baseline: existing findings are
   recorded, new lint errors fail the build.
 
-## [1.6.8] — versionCode 19
+## [1.13.1] — versionCode 19 (was 1.6.8)
 
 ### Fixed
 - Proxy fail-open: the enabled preference is persisted only after the core is
@@ -45,7 +93,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - The proxy switch and the top banner reflect the actual running state (core
   stopped / proxy not ready) instead of only the stored intent.
 
-## [1.6.7] — versionCode 18
+## [1.13.0] — versionCode 18 (was 1.6.7)
 
 ### Added
 - "Open new pages in a new tab" option in Toolbox → More; pages that open a new
@@ -55,7 +103,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - "Move" action in the bookmark long-press menu to move a bookmark into any
   folder.
 
-## [1.6.6]
+## [1.12.0] (was 1.6.6)
 
 ### Added
 - Long-press context menu on clickable elements: open in background, open in
@@ -66,7 +114,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
   context.
 - Image requests use the same in-app proxy as WebView.
 
-## [1.6.5]
+## [1.11.1] (was 1.6.5)
 
 ### Fixed
 - DRM-encrypted video playback: grant `RESOURCE_PROTECTED_MEDIA_ID` on the main
@@ -75,7 +123,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
   and media CDNs in the ad blocker, and add a 4-second EME probe timeout so
   players fall back to unencrypted streams instead of hanging.
 
-## [1.6.4]
+## [1.11.0] (was 1.6.4)
 
 ### Fixed / Added
 - Fixed "this media type is not supported / enable DRM" errors on some online
@@ -86,7 +134,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - Bottom bar changed to back / forward / home / tabs / toolbox; reload moved
   next to the proxy status dot and hides while the address bar is expanded.
 
-## [1.6.3]
+## [1.10.0] (was 1.6.3)
 
 ### Added
 - Tapping the address bar selects its whole content, so typing replaces it.
@@ -96,7 +144,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
   multi-select, delete all bookmarks. All destructive actions require a
   confirmation dialog.
 
-## [1.6.2]
+## [1.9.0] (was 1.6.2)
 
 ### Added
 - Tapping a blank area of the page dismisses the address-bar input without
@@ -104,7 +152,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - Bookmark import/export: export to a standard bookmarks file, import from
   files exported by Via, Chrome, Firefox and others, deduplicated automatically.
 
-## [1.6.1]
+## [1.8.0] (was 1.6.1)
 
 ### Added
 - Tapping a blank area of the home page dismisses the keyboard.
@@ -113,7 +161,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - Long-press a home shortcut to edit or remove it, change its letter, URL and
   display name.
 
-## [1.6.0]
+## [1.7.0] (was 1.6.0)
 
 ### Added
 - New local home page: browser logo, search box and up to 8 selectable
@@ -122,7 +170,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - Toolbox → More page with an "restore pages after unexpected exit" switch.
 - Open-source statement on the About page.
 
-## [1.4.5]
+## [1.6.2] (was 1.4.5)
 
 ### Changed
 - Configuration page redesigned as profile cards with name, traffic usage,
@@ -130,7 +178,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - App icon changed to a grey/white palette.
 - Removed the mode-switch hint text and the bottom sheet.
 
-## [1.4.4]
+## [1.6.1] (was 1.4.4)
 
 ### Changed
 - Proxy mode semantics: Global mode routes all traffic through the `GLOBAL`
@@ -139,7 +187,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
   domestic, proxy for overseas). The node panel hides the `GLOBAL` group
   outside Global mode. Added mode descriptions.
 
-## [1.4.3]
+## [1.6.0] (was 1.4.3)
 
 ### Added
 - Secure keyboard hardening: focusing a password field rebuilds the input
@@ -148,7 +196,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - Automatic session restore: after the process is killed, the next cold start
   asks whether to reopen the previous tabs (dialog follows the app theme).
 
-## [1.4.2]
+## [1.5.0] (was 1.4.2)
 
 ### Added
 - Light / Dark / Follow-system appearance with web page dark mode (tab history
@@ -157,14 +205,14 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
   is backgrounded, tighten the network idle connection pool, remove unused
   dependencies.
 
-## [1.4.1]
+## [1.4.0] (was 1.4.1)
 
 ### Added
 - Password fields are rewritten to the native password input type, enabling
   system secure keyboards (e.g. vivo).
 - Bookmarks in the toolbox: bookmark the current page, search, open and delete.
 
-## [1.4]
+## [1.3.1] (was 1.4)
 
 ### Fixed / Changed
 - Fixed "core not running / configuration lost" after the app stayed in the
@@ -175,7 +223,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
   for the selected node; lightweight animations for toolbox sub-pages and group
   expansion.
 
-## [1.3]
+## [1.3.0] (was 1.3)
 
 ### Fixed / Added
 - Fixed proxy configuration being lost after exiting and reopening: stale
@@ -184,7 +232,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - Incognito mode switch and browsing history in the toolbox.
 - Password fields automatically request the IME private keyboard mode.
 
-## [1.2]
+## [1.2.0] (was 1.2)
 
 ### Changed / Added
 - Nodes shown as cards (flag / protocol / latency); policy groups can be
@@ -192,7 +240,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - Toolbox added to the bottom bar; user-agent switching moved into the toolbox;
   About page added.
 
-## [1.1]
+## [1.1.0] (was 1.1)
 
 ### Added
 - Proxy master switch; Global / Rule / Direct mode switching.
@@ -200,7 +248,7 @@ therefore omitted. The project uses `versionName` / `versionCode` pairs
 - Long-press the tab button to open a new tab quickly.
 - User-agent switch (mobile / desktop).
 
-## [1.0]
+## [1.0.0] (was 1.0)
 
 ### Added
 - Embedded mihomo core and Geo databases integrated automatically.
