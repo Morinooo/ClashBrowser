@@ -17,6 +17,24 @@ installed apps can always upgrade; only `versionName` / tags were reorganized.
 1.7.0→1.14.0. GitHub releases were retagged accordingly (v1.13.0 / v1.13.1 /
 v1.13.2 / v1.14.0); older history never had published releases.
 
+## [1.15.1] — versionCode 23
+
+### Fixed
+- Long-press inside web-page input fields (and contenteditable nodes) no longer
+  opens the custom link/image context menu: `EDIT_TEXT_TYPE` hit results are
+  passed through to WebView's native selection / select-all / cut / copy /
+  paste action mode.
+- Subscription URL field: added an explicit paste button (reads the clipboard)
+  so pasting works even on devices where the system long-press floating
+  toolbar is suppressed inside bottom sheets; native long-press is unchanged.
+
+### Changed
+- The top proxy/core status banner can now be dismissed via a close (✕) button
+  on its right; it reappears automatically when the proxy/core state changes.
+- Toolbox layout: 阅读模式 and 资源嗅探 moved into Toolbox → More; 浏览器标识
+  (mobile / desktop UA + desktop viewport) restored as a standalone main-list
+  entry with its own page, replacing the desktop switch inside More.
+
 ## [1.15.0] — versionCode 22
 
 ### Added

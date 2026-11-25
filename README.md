@@ -84,7 +84,7 @@ The idea is simple: put the Clash configuration centre *inside* the browser, and
 - Download manager for non-image files: task list with live progress, retry, open-with and confirmed delete; system `Download/ClashBrowser` on API 29+, app-private dir below; follows the in-app proxy and session cookies
 - File upload: `<input type="file">` opens the system file picker (multi-select) via SAF
 - In-page find with live match count and prev/next; reader mode (clean article reflow, adjustable font size); media sniffer (per-tab stream list with copy/download/open)
-- Toolbox → More consolidates settings: search engine choice (Google/Bing/Baidu/DuckDuckGo), desktop mode (UA + real desktop viewport), incognito isolation (no history/snapshot/cache; cookies of incognito-visited hosts cleared on exit), subscription info (hardened userinfo parsing + refresh)
+- Toolbox → More consolidates settings and page tools: search engine choice (Google/Bing/Baidu/DuckDuckGo), incognito isolation (no history/snapshot/cache; cookies of incognito-visited hosts cleared on exit), subscription info (hardened userinfo parsing + refresh), reader mode and media sniffer. Desktop mode (UA + real desktop viewport) lives in the standalone 浏览器标识 main-list entry; the top status banner is dismissible
 - DRM/EME hardening: grant `RESOURCE_PROTECTED_MEDIA_ID`, third-party cookies, standard Chrome mobile UA (`wv` marker removed), license-provider and media-CDN allow-list, 4-second EME probe timeout with graceful fallback
 - Password-field hardening: rewrite the IME input type to the native password variation, disable personalised learning, and rebuild the input connection on focus so OEM secure keyboards (e.g. vivo) are triggered reliably
 - Lightweight host-list ad/tracker blocking with a user-marked ad-domain list
@@ -224,7 +224,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Current status
 
-Version **1.15.0** (`versionCode 22`), actively developed. Version names follow
+Version **1.15.1** (`versionCode 23`), actively developed. Version names follow
 semver (feature = minor, fix = patch); see CHANGELOG for the old→new map.
 
 | Area | Status |

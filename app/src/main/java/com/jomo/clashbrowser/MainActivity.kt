@@ -467,6 +467,8 @@ private fun createWebView(
     // 长按可点击对象 -> 上下文菜单；纯文本长按保留系统选择行为
     wv.setOnLongClickListener {
         val ht = wv.hitTestResult
+        // 可编辑节点（输入框/内容editable）放行 WebView 原生选择/全选/剪切/复制/粘贴菜单
+        if (ht.type == WebView.HitTestResult.EDIT_TEXT_TYPE) return@setOnLongClickListener false
         val extra = ht.extra ?: ""
         var link = ""
         var image = ""
@@ -676,6 +678,10 @@ private fun BrowserScreen(
     var findTotal by remember { mutableIntStateOf(0) }
     var readerDoc by remember { mutableStateOf<ReaderDoc?>(null) }
     var readerSp by remember { mutableIntStateOf(16) }
+    var bannerDismissed by remember { mutableStateOf(false) }
+
+    // 代理/内核状态变化时重新提示（此前被手动关闭的横框随新状态恢复）
+    LaunchedEffect(proxyEnabled, coreState, proxyReady) { bannerDismissed = false }
 
     // 切换标签时清除上一个标签的查找高亮与计数
     LaunchedEffect(activeId) {
@@ -1198,20 +1204,33 @@ private fun BrowserScreen(
                     )
                 }
             }
-            if (!isHome && (!proxyEnabled || coreState != CoreState.RUNNING || !proxyReady)) {
+            if (!isHome && !bannerDismissed && (!proxyEnabled || coreState != CoreState.RUNNING || !proxyReady)) {
                 Surface(
                     color = themeColor(Color(0xFFFFF3E0), Color(0xFF3A2E1E)),
                     modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
                 ) {
-                    Text(
-                        if (!proxyEnabled) "代理已关闭 · 直连模式（点右上红点开启）"
-                        else if (coreState != CoreState.RUNNING) "内核未运行 · 自动重启中，网页暂不可用（点右上红点查看日志）"
-                        else "代理未就绪 · 当前直连（点右上红点配置）",
-                        fontSize = 12.sp,
-                        color = themeColor(Color(0xFF8D6E63), Color(0xFFD7B98E)),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.padding(6.dp)
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
+                    ) {
+                        Text(
+                            if (!proxyEnabled) "代理已关闭 · 直连模式（点右上红点开启）"
+                            else if (coreState != CoreState.RUNNING) "内核未运行 · 自动重启中，网页暂不可用（点右上红点查看日志）"
+                            else "代理未就绪 · 当前直连（点右上红点配置）",
+                            fontSize = 12.sp,
+                            color = themeColor(Color(0xFF8D6E63), Color(0xFFD7B98E)),
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.weight(1f).padding(vertical = 4.dp)
+                        )
+                        IconButton(onClick = { bannerDismissed = true }, modifier = Modifier.size(28.dp)) {
+                            Icon(
+                                Icons.Default.Close,
+                                "关闭提示",
+                                tint = themeColor(Color(0xFF8D6E63), Color(0xFFD7B98E)),
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
+                    }
                 }
             }
             // 阅读模式：纯净正文重排，字号可调，覆盖于网页之上

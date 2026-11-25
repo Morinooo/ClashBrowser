@@ -86,8 +86,8 @@ import java.util.Locale
 
 /**
  * 工具箱（BottomSheet 内容）：
- * 主页面（历史/收藏/下载/阅读/嗅探/外观/更多/关于）-> 各子页面；
- * 设置类开关（无痕/桌面/搜索引擎/订阅信息/恢复/新标签）集中在「更多」。
+ * 主页面（历史/收藏/下载/浏览器标识/外观/更多/关于）-> 各子页面；
+ * 设置与工具（无痕/搜索引擎/订阅信息/恢复/新标签/阅读/嗅探）集中在「更多」。
  */
 @Composable
 fun ToolboxSheet(
@@ -230,34 +230,7 @@ fun ToolboxSheet(
                         }
                     )
                 }
-                // 桌面模式：UA + 真桌面视口（viewport 覆写为 1024 宽）
-                Row(
-                    Modifier.fillMaxWidth().padding(vertical = 8.dp, horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text("桌面模式", fontSize = 15.sp, fontWeight = FontWeight.Medium)
-                        Text(
-                            if (desktopUa) "开启 · 电脑标识 + 桌面宽度视口，访问桌面版网页"
-                            else "关闭 · 安卓手机标识与移动视口",
-                            fontSize = 12.sp,
-                            color = Color.Gray
-                        )
-                    }
-                    Switch(
-                        checked = desktopUa,
-                        onCheckedChange = {
-                            desktopUa = it
-                            ProxyManager.setDesktopUa(it)
-                            onUaChange(it)
-                            Toast.makeText(
-                                context,
-                                if (it) "已切换为桌面模式" else "已切换为移动模式",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                    )
-                }
+                // 桌面模式开关移至主列表「浏览器标识」页，避免重复入口
                 var engine by remember { mutableStateOf(ProxyManager.searchEngine()) }
                 ToolboxRow(
                     icon = Icons.Default.Search,
@@ -275,6 +248,44 @@ fun ToolboxSheet(
                     title = "订阅信息",
                     desc = "流量/到期解析详情与手动刷新"
                 ) { page = "subinfo" }
+                Spacer(Modifier.height(4.dp))
+                ToolboxRow(
+                    icon = painterResource(R.drawable.ic_reader),
+                    title = "阅读模式",
+                    desc = "提取当前页正文，纯净重排阅读"
+                ) { onReaderMode() }
+                Spacer(Modifier.height(4.dp))
+                ToolboxRow(
+                    icon = painterResource(R.drawable.ic_sniff),
+                    title = "资源嗅探",
+                    desc = "当前标签的媒体/流地址：复制、下载、打开"
+                ) { page = "sniffer" }
+            }
+
+            "ua" -> {
+                SheetHeader("浏览器标识") { page = "main" }
+                Spacer(Modifier.height(8.dp))
+                listOf(
+                    Triple(false, "移动标识", "安卓手机 UA + 移动视口（默认）"),
+                    Triple(true, "桌面标识", "电脑 UA + 1024 宽视口，加载桌面版网页")
+                ).forEach { (desktop, title, desc) ->
+                    UaOption(title = title, desc = desc, selected = desktopUa == desktop) {
+                        desktopUa = desktop
+                        ProxyManager.setDesktopUa(desktop)
+                        onUaChange(desktop)
+                        Toast.makeText(
+                            context,
+                            if (desktop) "已切换为桌面模式" else "已切换为移动模式",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                    Spacer(Modifier.height(8.dp))
+                }
+                Text(
+                    "切换后会重载所有已打开标签；桌面标识同时启用桌面宽度视口",
+                    fontSize = 11.sp,
+                    color = Color.Gray
+                )
             }
 
             "engine" -> {
@@ -347,7 +358,7 @@ fun ToolboxSheet(
             }
 
             "sniffer" -> {
-                SheetHeader("资源嗅探") { page = "main" }
+                SheetHeader("资源嗅探") { page = "more" }
                 Spacer(Modifier.height(8.dp))
                 val sv by SnifferStore.version.collectAsState()
                 val sniffItems = remember(sv, tabId) { SnifferStore.list(tabId) }
@@ -918,7 +929,7 @@ fun ToolboxSheet(
                     Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())
                 ) {
                     Text("ClashBrowser", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("v1.15.0 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
+                    Text("v1.15.1 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
                     Text("Made by Morin with Qwen.", fontSize = 11.sp, color = Color.Gray)
                     Spacer(Modifier.height(16.dp))
 
@@ -941,7 +952,15 @@ fun ToolboxSheet(
                     )
                     Spacer(Modifier.height(6.dp))
                     ChangelogBlock(
-                        "v1.15.0（当前）",
+                        "v1.15.1（当前）",
+                        "修复网页输入框长按被自定义菜单拦截：可编辑节点放行系统选择/全选/剪切/复制/粘贴菜单；" +
+                            "订阅链接框新增一键粘贴按钮（读剪贴板），长按浮窗受限时仍可粘贴；" +
+                            "页顶代理/内核提示横框右侧新增关闭按钮，状态变化时重新提示；" +
+                            "阅读模式与资源嗅探移入工具箱-更多，浏览器标识恢复主列表独立入口（移动/桌面切换）。"
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    ChangelogBlock(
+                        "v1.15.0",
                         "新增页内查找（高亮计数/上下跳转）、阅读模式（正文重排/字号可调）、资源嗅探（媒体流列表/复制/下载/打开）；" +
                             "工具箱-更多整合四项设置：搜索引擎可选、桌面模式真视口、无痕隔离（退出清 Cookie/缓存）、订阅信息解析加固与刷新；" +
                             "下载管理保持独立入口；历史版本号按 semver 重排。"
@@ -1106,16 +1125,10 @@ fun ToolboxSheet(
                 ) { page = "downloads" }
                 Spacer(Modifier.height(4.dp))
                 ToolboxRow(
-                    icon = painterResource(R.drawable.ic_reader),
-                    title = "阅读模式",
-                    desc = "提取当前页正文，纯净重排阅读"
-                ) { onReaderMode() }
-                Spacer(Modifier.height(4.dp))
-                ToolboxRow(
-                    icon = painterResource(R.drawable.ic_sniff),
-                    title = "资源嗅探",
-                    desc = "当前标签的媒体/流地址：复制、下载、打开"
-                ) { page = "sniffer" }
+                    icon = painterResource(R.drawable.ic_ua),
+                    title = "浏览器标识",
+                    desc = if (desktopUa) "当前：桌面标识 + 桌面视口" else "当前：移动标识"
+                ) { page = "ua" }
                 Spacer(Modifier.height(4.dp))
                 ToolboxRow(
                     icon = Icons.Default.Settings,
@@ -1130,7 +1143,7 @@ fun ToolboxSheet(
                 ToolboxRow(
                     icon = Icons.Default.MoreVert,
                     title = "更多",
-                    desc = "无痕/桌面/搜索引擎/订阅信息等设置"
+                    desc = "无痕/搜索引擎/订阅信息/阅读/嗅探等"
                 ) { page = "more" }
                 Spacer(Modifier.height(4.dp))
                 ToolboxRow(

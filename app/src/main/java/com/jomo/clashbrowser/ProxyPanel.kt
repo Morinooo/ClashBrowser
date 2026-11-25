@@ -265,6 +265,24 @@ fun ProxyPanel(
                     placeholder = { Text("粘贴订阅链接（http/https）", fontSize = 13.sp) },
                     singleLine = true,
                     textStyle = TextStyle(fontSize = 13.sp),
+                    trailingIcon = {
+                        // 一键粘贴：部分机型系统长按浮窗受限时仍可完成粘贴
+                        TextButton(onClick = {
+                            val cm = context.getSystemService(android.content.ClipboardManager::class.java)
+                            val clip = cm?.primaryClip
+                            val text = if (clip != null && clip.itemCount > 0) {
+                                clip.getItemAt(0).coerceToText(context).toString()
+                            } else ""
+                            if (text.isNotBlank()) {
+                                subUrl = text.trim()
+                                toast("已粘贴订阅链接")
+                            } else {
+                                toast("剪贴板为空")
+                            }
+                        }) {
+                            Text("粘贴", fontSize = 12.sp)
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth()
                 )
                 Spacer(Modifier.height(6.dp))
