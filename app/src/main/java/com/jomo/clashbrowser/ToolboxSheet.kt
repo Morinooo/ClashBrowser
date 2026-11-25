@@ -639,7 +639,7 @@ fun ToolboxSheet(
 
                     Text("基于开源项目", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Spacer(Modifier.height(6.dp))
-                    AboutLine("mihomo（MetaCubeX/mihomo）", "Clash Meta 代理内核 · MIT")
+                    AboutLine("mihomo（MetaCubeX/mihomo）", "Clash Meta 代理内核 · GPL-3.0")
                     AboutLine("meta-rules-dat（MetaCubeX）", "GeoIP / GeoSite 规则数据 · GPL-3.0")
                     AboutLine("Jetpack Compose / AndroidX / WebKit", "界面与 WebView 代理 · Apache-2.0")
                     AboutLine("OkHttp（Square）", "订阅拉取与内核 API 通信 · Apache-2.0")
@@ -760,7 +760,7 @@ fun ToolboxSheet(
                     Text("开源声明", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Spacer(Modifier.height(6.dp))
                     Text(
-                        "本软件遵循 GPL-3.0 协议开源；内置 mihomo 内核为 MIT 协议，" +
+                        "本软件遵循 GPL-3.0 协议开源；内置 mihomo 内核同为 GPL-3.0 协议，" +
                             "GeoIP / GeoSite 数据来自 MetaCubeX/meta-rules-dat（GPL-3.0）；" +
                             "AndroidX / Jetpack Compose、OkHttp、kotlinx.coroutines、SnakeYAML 等依赖遵循 Apache-2.0 协议。" +
                             "欢迎自由使用、修改与分发，请保留相应许可与署名。",
