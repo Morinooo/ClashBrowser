@@ -219,7 +219,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Current status
 
-Version **1.6.8** (`versionCode 19`), actively developed.
+Version **1.6.9** (`versionCode 20`), actively developed.
 
 | Area | Status |
 |---|---|
@@ -259,7 +259,6 @@ These are intended directions, not promises:
 - Optional search-engine selection
 - Non-image downloads and `<input type="file">` support
 - Stronger private-browsing isolation (cookies / cache / snapshot)
-- Unit tests for pure logic and a CI lint step
 - Additional ABI support (if there is demand)
 
 ## Privacy

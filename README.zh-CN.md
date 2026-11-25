@@ -217,7 +217,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## 当前开发状态
 
-版本 **1.6.8**（`versionCode 19`），持续开发中。
+版本 **1.6.9**（`versionCode 20`），持续开发中。
 
 | 模块 | 状态 |
 |---|---|
@@ -257,7 +257,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - 可选的搜索引擎
 - 非图片下载与 `<input type="file">` 支持
 - 更强的隐私隔离（Cookie / 缓存 / 快照）
-- 纯逻辑单元测试与 CI lint
 - 视需求增加其它 ABI
 
 ## 隐私说明

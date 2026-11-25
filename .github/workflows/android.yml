@@ -42,9 +42,12 @@ jobs:
         run: ./gradlew --no-daemon assembleDebug
 
       - name: Run unit tests
-        # There are currently no unit tests; this verifies the test task and
-        # compiles the debug unit-test sources.
         run: ./gradlew --no-daemon testDebugUnitTest
+
+      - name: Run Android lint
+        # Existing findings are baselined in app/lint-baseline.xml;
+        # new lint errors fail the build.
+        run: ./gradlew --no-daemon lintDebug
 
       - name: Upload debug APK
         uses: actions/upload-artifact@v4

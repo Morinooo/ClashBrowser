@@ -340,7 +340,7 @@ private fun isHomeUrl(url: String): Boolean =
     url == HOME_MARKER || url.isBlank() ||
         url == GOOGLE_URL || url == "$GOOGLE_URL/"
 
-private fun toLoadUrl(input: String): String {
+internal fun toLoadUrl(input: String): String {
     val t = input.trim()
     if (t.isEmpty()) return HOME_MARKER
     if (t.startsWith("http://") || t.startsWith("https://")) return t

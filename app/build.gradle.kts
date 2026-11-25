@@ -15,9 +15,15 @@ android {
         applicationId = "com.jomo.clashbrowser"
         minSdk = 26
         targetSdk = 34
-        versionCode = 19
-        versionName = "1.6.8"
+        versionCode = 20
+        versionName = "1.6.9"
         ndk { abiFilters += listOf("arm64-v8a") }
+    }
+
+    // 存量问题记入基线，新增 lint 错误直接失败（CI 门禁）
+    lint {
+        abortOnError = true
+        baseline = file("lint-baseline.xml")
     }
 
     // Optional release signing. The release workflow injects these environment
@@ -158,4 +164,5 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1")
     implementation("org.yaml:snakeyaml:2.2")
     implementation("com.google.zxing:core:3.5.3")
+    testImplementation("junit:junit:4.13.2")
 }

@@ -469,25 +469,41 @@ object ProxyManager {
         return runCatching { Uri.parse(url).host }.getOrNull() ?: url
     }
 
-    private fun validateYaml(text: String): String? {
+    internal fun validateYaml(text: String): String? {
         return try {
             val root = Yaml().load<Any?>(text)
             when {
                 root !is Map<*, *> -> "配置不是合法的 YAML 映射"
                 !root.containsKey("proxies") && !root.containsKey("proxy-providers") ->
                     "配置缺少 proxies 或 proxy-providers 字段，请确认是 Clash 订阅"
-                else -> null
+                else -> loopbackError(root)
             }
         } catch (e: Exception) {
             "YAML 解析失败: ${e.message?.take(200)}"
         }
     }
 
+    /** 拒绝指向本机混合端口的代理节点，避免导入后形成代理自环。 */
+    private fun loopbackError(root: Map<*, *>): String? {
+        val proxies = root["proxies"] as? List<*> ?: return null
+        for (p in proxies) {
+            val m = p as? Map<*, *> ?: continue
+            val server = m["server"]?.toString()?.lowercase() ?: continue
+            val port = (m["port"] as? Number)?.toInt() ?: continue
+            if (port == 7890 && server in setOf("127.0.0.1", "localhost", "::1", "0.0.0.0")) {
+                return "含回环代理节点 ${m["name"] ?: server}（指向本机 7890，会自环），已拒绝"
+            }
+        }
+        return null
+    }
+
     /** 强制覆盖本地运行必需的基础字段，避免订阅配置破坏 WebView 代理与 API 通道。 */
-    private fun ensureBasics(yamlText: String): String {
+    internal fun ensureBasics(yamlText: String): String {
         var text = yamlText
         val required = linkedMapOf(
             "mixed-port" to "7890",
+            "port" to "0",
+            "socks-port" to "0",
             "allow-lan" to "false",
             "external-controller" to "127.0.0.1:9090",
             "secret" to "\"\""

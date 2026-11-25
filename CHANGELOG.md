@@ -3,7 +3,24 @@
 All notable user-visible changes to ClashBrowser. This file is derived from the
 in-app changelog shipped with the app; dates are not recorded there and are
 therefore omitted. The project uses `versionName` / `versionCode` pairs
-(`1.6.8` / `19` as of the latest release). There was no `1.5.x` release.
+(`1.6.9` / `20` as of the latest release). There was no `1.5.x` release.
+
+## [1.6.9] — versionCode 20
+
+### Fixed
+- Import validation rejects proxy nodes pointing at the local mixed port
+  (`127.0.0.1` / `localhost` / `::1` / `0.0.0.0` on port 7890), which would
+  form a proxy self-loop once imported.
+- `port` and `socks-port` are forced to 0 alongside `mixed-port: 7890` so an
+  imported config cannot conflict with the WebView proxy listener.
+- NOTICE: mihomo is GPL-3.0, not MIT; the attribution and license reference
+  are corrected.
+
+### Added
+- JVM unit tests for the ad blocker rules, config validation and address
+  parsing, executed by CI (`testDebugUnitTest`).
+- Android lint step in CI with a committed baseline: existing findings are
+  recorded, new lint errors fail the build.
 
 ## [1.6.8] — versionCode 19
 

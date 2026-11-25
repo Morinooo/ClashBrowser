@@ -633,7 +633,7 @@ fun ToolboxSheet(
                     Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())
                 ) {
                     Text("ClashBrowser", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("v1.6.8 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
+                    Text("v1.6.9 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
                     Text("Made by Morin with Qwen.", fontSize = 11.sp, color = Color.Gray)
                     Spacer(Modifier.height(16.dp))
 
@@ -650,7 +650,12 @@ fun ToolboxSheet(
                     Text("更新记录", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Spacer(Modifier.height(6.dp))
                     ChangelogBlock(
-                        "v1.6.8（当前）",
+                        "v1.6.9（当前）",
+                        "导入订阅/本地配置时拒绝指向本机 7890 的回环代理节点（防代理自环），port/socks-port 强制归零防端口冲突；" +
+                            "NOTICE 中 mihomo 许可署名修正为 GPL-3.0；新增 JVM 单元测试（广告拦截、配置校验、地址解析）与 CI lint 门禁。"
+                    )
+                    ChangelogBlock(
+                        "v1.6.8",
                         "修复代理启用失败却静默直连：启用态仅在内核与 WebView 代理均就绪后持久化，失败回滚开关并明确提示直连；" +
                             "开关与页顶横幅按内核实际状态显示「实际运行」；冷启动/回前台启动失败自动回退直连并提示。"
                     )
