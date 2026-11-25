@@ -81,6 +81,8 @@ The idea is simple: put the Clash configuration centre *inside* the browser, and
 - Desktop or mobile user agent
 - Long-press context menu: open in background, open in new tab, view image, save image, download image, share image, image gallery mode, page info, mark ad domain, copy link text, scan QR code, copy link, share
 - Save images through MediaStore (API 29+) or app-specific storage (API 26–28); share via `FileProvider`; QR decoding with ZXing
+- Download manager for non-image files: task list with live progress, retry, open-with and confirmed delete; system `Download/ClashBrowser` on API 29+, app-private dir below; follows the in-app proxy and session cookies
+- File upload: `<input type="file">` opens the system file picker (multi-select) via SAF
 - DRM/EME hardening: grant `RESOURCE_PROTECTED_MEDIA_ID`, third-party cookies, standard Chrome mobile UA (`wv` marker removed), license-provider and media-CDN allow-list, 4-second EME probe timeout with graceful fallback
 - Password-field hardening: rewrite the IME input type to the native password variation, disable personalised learning, and rebuild the input connection on focus so OEM secure keyboards (e.g. vivo) are triggered reliably
 - Lightweight host-list ad/tracker blocking with a user-marked ad-domain list
@@ -157,6 +159,7 @@ app/src/main/java/com/jomo/clashbrowser/
 ├── HomeScreen.kt          # local home page and shortcut editors
 ├── ContextMenu.kt         # long-press menu, image gallery, page info, QR result
 ├── MediaActions.kt        # image fetch/save/download/share, QR decode
+├── DownloadStore.kt       # download manager: tasks, progress, retry, open/delete
 ├── BookmarkStore.kt       # bookmark tree + Netscape HTML import/export
 ├── HomeStore.kt           # home shortcut preferences
 ├── HistoryStore.kt        # history + incognito flag
@@ -219,7 +222,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Current status
 
-Version **1.6.9** (`versionCode 20`), actively developed.
+Version **1.7.0** (`versionCode 21`), actively developed.
 
 | Area | Status |
 |---|---|
@@ -228,9 +231,10 @@ Version **1.6.9** (`versionCode 20`), actively developed.
 | WebView local proxy without VPN | Implemented |
 | Core lifecycle hardening (retry, revive, clean shutdown) | Implemented |
 | Bookmarks import/export, image actions, QR, ad blocking | Implemented |
-| Automated tests | **Not present** |
-| Release signing / Play distribution | **Not configured** |
-| Non-image downloads, file upload, in-page find, search-engine choice | **Not implemented** |
+| Download manager (progress / retry / open / delete), file upload (SAF) | Implemented |
+| JVM unit tests + CI lint gate | Implemented |
+| Release signing via CI secrets (tag builds) | Implemented |
+| In-page find, search-engine choice | **Not implemented** |
 
 ## Known limitations
 
@@ -240,13 +244,13 @@ Version **1.6.9** (`versionCode 20`), actively developed.
 - **No VPN service.** Apps or system components that do not go through WebView are not proxied.
 - **Incognito only suppresses history writing.** Cookies, cache, form data and the tab snapshot are not isolated. Do not treat it as a full private mode.
 - **Search engine is fixed to Google.**
-- **Non-image downloads, file upload (`<input type="file">`), in-page find and site permission management are not implemented.**
+- **In-page find and site permission management are not implemented.**
 - **Ad blocking is a small built-in host list** plus user-marked domains; it is not a rule-subscription engine and cannot be toggled.
 - **DRM playback depends on the system WebView provider and Widevine availability.** On devices without a usable CDM, the app falls back to non-encrypted streams after a 4-second EME probe timeout.
 - **The proxy applies only if the WebView provider supports `ProxyController`**; otherwise the app silently falls back to a direct connection.
 - **The local mihomo API (`127.0.0.1:9090`, empty secret) and mixed port (`127.0.0.1:7890`) are reachable by other apps on the same device while the core is running.**
 - **The core and Geo data are downloaded at build time from GitHub's "latest" release without checksum pinning**, which makes builds non-reproducible.
-- **No release signing, no automated tests, no CI-verified release APK** (a debug APK is produced by CI for manual testing only).
+- **Two signing channels:** CI tag builds produce a release-signed APK; manually delivered APKs are debug-signed. The two signatures cannot overwrite-install each other — pick one channel.
 - **Run-mode preference** is re-applied when a configuration is saved or the core is restarted manually; after a cold start the mode stored in `config.yaml` is used.
 
 ## Roadmap
@@ -257,7 +261,6 @@ These are intended directions, not promises:
 - Release signing setup and a reproducible release workflow
 - Screenshots and short demo recordings
 - Optional search-engine selection
-- Non-image downloads and `<input type="file">` support
 - Stronger private-browsing isolation (cookies / cache / snapshot)
 - Additional ABI support (if there is demand)
 

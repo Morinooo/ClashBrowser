@@ -79,6 +79,8 @@ ClashBrowser **不内置**任何订阅、节点或代理服务，你需要自备
 - 浏览器标识：安卓手机 / 电脑 UA 切换
 - 长按上下文菜单：后台打开、新标签打开、查看图片、保存图片、下载图片、分享图片、看图模式、页面信息、标记广告、复制链接文本、扫描二维码、复制链接、分享
 - 图片保存走 MediaStore（API 29+）或应用专属目录（API 26–28）；分享走 FileProvider；二维码用 ZXing 离线解码
+- 非图片下载管理器：任务列表含实时进度、重试、打开、二次确认删除；API 29+ 存入系统 Download/ClashBrowser，旧系统存应用私有目录；跟随应用内代理与会话 Cookie
+- 文件上传：`<input type="file">` 经 SAF 唤起系统文件选择器（支持多选）
 - DRM / EME 加固：放行 `RESOURCE_PROTECTED_MEDIA_ID`、第三方 Cookie、标准 Chrome 移动 UA（去掉 `wv` 标记）、许可证服务商与媒资 CDN 白名单、EME 探测 4 秒限时回退
 - 密码输入加固：输入法类型改写为原生密码类型、禁止个性化学习、获焦时重建输入连接，稳定触发厂商安全键盘（如 vivo）
 - 轻量广告 / 追踪域名拦截 + 用户标记广告域名
@@ -155,6 +157,7 @@ app/src/main/java/com/jomo/clashbrowser/
 ├── HomeScreen.kt          # 本地主页与图标编辑
 ├── ContextMenu.kt         # 长按菜单、看图模式、页面信息、扫码结果
 ├── MediaActions.kt        # 图片拉取 / 保存 / 下载 / 分享 / 二维码解码
+├── DownloadStore.kt       # 下载管理：任务 / 进度 / 重试 / 打开 / 删除
 ├── BookmarkStore.kt       # 书签树 + Netscape HTML 导入导出
 ├── HomeStore.kt           # 首页图标偏好
 ├── HistoryStore.kt        # 历史记录 + 无痕开关
@@ -217,7 +220,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## 当前开发状态
 
-版本 **1.6.9**（`versionCode 20`），持续开发中。
+版本 **1.7.0**（`versionCode 21`），持续开发中。
 
 | 模块 | 状态 |
 |---|---|
@@ -226,9 +229,10 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 | 免 VPN 的 WebView 局部代理 | 已实现 |
 | 内核生命周期加固（重试、复活、干净退出） | 已实现 |
 | 书签导入导出、图片操作、二维码、广告拦截 | 已实现 |
-| 自动化测试 | **无** |
-| Release 签名 / 上架分发 | **未配置** |
-| 非图片下载、文件上传、页内查找、搜索引擎选择 | **未实现** |
+| 下载管理（进度 / 重试 / 打开 / 删除）、文件上传（SAF） | 已实现 |
+| JVM 单元测试 + CI lint 门禁 | 已实现 |
+| CI 密钥 release 签名（tag 构建） | 已实现 |
+| 页内查找、搜索引擎选择 | **未实现** |
 
 ## 已知限制
 
@@ -238,13 +242,13 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - **没有 VPN 服务**，不经过 WebView 的系统或应用流量不会被代理。
 - **无痕模式只停写浏览记录**，不隔离 Cookie / 缓存 / 表单 / 标签快照，不要当作完整隐私模式。
 - **搜索引擎固定为 Google**。
-- **未实现非图片下载、文件上传（`<input type="file">`）、页内查找、站点权限管理。**
+- **未实现页内查找、站点权限管理。**
 - **广告拦截是内置小型域名表** + 用户标记，不是规则订阅引擎，也没有开关。
 - **DRM 播放依赖系统 WebView 与 Widevine**；无可用的 CDM 时，EME 探测 4 秒超时后回退非加密流。
 - **只有当 WebView 提供方支持 `ProxyController` 时代理才生效**，否则静默降级为直连。
 - **代理运行期间，本机 mihomo API（`127.0.0.1:9090`，空 secret）与混合端口（`127.0.0.1:7890`）对同设备其它应用可达。**
 - **内核与 Geo 数据在构建时从 GitHub 的 "latest" 下载且无校验固定**，构建不可复现。
-- **没有 release 签名、没有自动化测试**；CI 产出的 debug APK 仅用于手动测试。
+- **两种签名渠道**：CI tag 构建产出 release 签名包；手动交付的 APK 为 debug 签名。两者签名不同、不能互相覆盖安装，请选定一个渠道。
 - **运行模式偏好**在保存配置或手动重启内核时恢复；冷启动后使用 `config.yaml` 中记录的模式。
 
 ## Roadmap
@@ -255,7 +259,6 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - 配置 release 签名与可复现的发布流程
 - 补充截图与演示视频
 - 可选的搜索引擎
-- 非图片下载与 `<input type="file">` 支持
 - 更强的隐私隔离（Cookie / 缓存 / 快照）
 - 视需求增加其它 ABI
 

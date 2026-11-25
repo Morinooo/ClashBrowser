@@ -3,7 +3,19 @@
 All notable user-visible changes to ClashBrowser. This file is derived from the
 in-app changelog shipped with the app; dates are not recorded there and are
 therefore omitted. The project uses `versionName` / `versionCode` pairs
-(`1.6.9` / `20` as of the latest release). There was no `1.5.x` release.
+(`1.7.0` / `21` as of the latest release). There was no `1.5.x` release.
+
+## [1.7.0] — versionCode 21
+
+### Added
+- Download manager: non-image downloads captured via `setDownloadListener`,
+  streamed with progress; Toolbox → 下载管理 task list with progress bar,
+  retry, open-with and confirmed delete. API 29+ stores into system
+  `Download/ClashBrowser` (MediaStore); API 26–28 into the app-private external
+  Download dir — no new permissions. Tasks persist; interrupted ones restore
+  as failed/retryable. Downloads follow the in-app proxy and session cookies.
+- File upload: `onShowFileChooser` opens the system SAF picker (multi-select)
+  and returns results to `<input type="file">` pages.
 
 ## [1.6.9] — versionCode 20
 

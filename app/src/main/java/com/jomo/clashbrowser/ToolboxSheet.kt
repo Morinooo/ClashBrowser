@@ -37,6 +37,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.automirrored.filled.List
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
@@ -572,6 +574,86 @@ fun ToolboxSheet(
                 }
             }
 
+            "downloads" -> {
+                SheetHeader("下载管理") { page = "main" }
+                Spacer(Modifier.height(8.dp))
+                val dlTasks by DownloadStore.tasks.collectAsState()
+                var dlDeleteId by remember { mutableStateOf<String?>(null) }
+                if (dlTasks.isEmpty()) {
+                    Text("暂无下载任务", fontSize = 13.sp, color = Color.Gray)
+                } else {
+                    LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        items(dlTasks) { t ->
+                            Column(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .padding(12.dp)
+                            ) {
+                                Text(t.name, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Spacer(Modifier.height(4.dp))
+                                when (t.state) {
+                                    DlState.RUNNING -> {
+                                        val pct = if (t.total > 0) (t.done * 100 / t.total).toInt() else -1
+                                        LinearProgressIndicator(
+                                            progress = { if (pct >= 0) pct / 100f else 0f },
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                        Spacer(Modifier.height(4.dp))
+                                        Text(
+                                            if (pct >= 0) "下载中 $pct% · ${DownloadStore.fmtSize(t.done)} / ${DownloadStore.fmtSize(t.total)}"
+                                            else "下载中 · ${DownloadStore.fmtSize(t.done)}",
+                                            fontSize = 12.sp,
+                                            color = Color.Gray
+                                        )
+                                    }
+                                    DlState.DONE -> Text(
+                                        "已完成 · ${DownloadStore.fmtSize(t.total)}",
+                                        fontSize = 12.sp,
+                                        color = Color.Gray
+                                    )
+                                    DlState.FAILED -> Text(
+                                        "失败：${t.error}",
+                                        fontSize = 12.sp,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                                Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                    if (t.state == DlState.FAILED) {
+                                        TextButton(onClick = { DownloadStore.retry(t.id) }) { Text("重试", fontSize = 13.sp) }
+                                    }
+                                    if (t.state == DlState.DONE) {
+                                        TextButton(onClick = {
+                                            if (!DownloadStore.open(context, t)) {
+                                                Toast.makeText(context, "没有可打开该文件的应用", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }) { Text("打开", fontSize = 13.sp) }
+                                    }
+                                    TextButton(onClick = { dlDeleteId = t.id }) {
+                                        Text("删除", fontSize = 13.sp, color = MaterialTheme.colorScheme.error)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                dlDeleteId?.let { id ->
+                    AlertDialog(
+                        onDismissRequest = { dlDeleteId = null },
+                        title = { Text("确认删除") },
+                        text = { Text("将删除下载记录与文件，不可恢复。", fontSize = 14.sp) },
+                        confirmButton = {
+                            TextButton(onClick = {
+                                DownloadStore.delete(id)
+                                dlDeleteId = null
+                            }) { Text("删除", color = MaterialTheme.colorScheme.error) }
+                        },
+                        dismissButton = { TextButton(onClick = { dlDeleteId = null }) { Text("取消") } }
+                    )
+                }
+            }
+
             "history" -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     IconButton(onClick = { page = "main" }) {
@@ -633,7 +715,7 @@ fun ToolboxSheet(
                     Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())
                 ) {
                     Text("ClashBrowser", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("v1.6.9 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
+                    Text("v1.7.0 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
                     Text("Made by Morin with Qwen.", fontSize = 11.sp, color = Color.Gray)
                     Spacer(Modifier.height(16.dp))
 
@@ -650,7 +732,12 @@ fun ToolboxSheet(
                     Text("更新记录", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
                     Spacer(Modifier.height(6.dp))
                     ChangelogBlock(
-                        "v1.6.9（当前）",
+                        "v1.7.0（当前）",
+                        "新增下载管理器：接管网页非图片下载，任务列表含进度/失败重试/打开/删除，API29+ 存入系统 Download/ClashBrowser，" +
+                            "旧系统存入应用私有目录免存储权限；新增文件上传：网页 input type=file 唤起系统文件选择器（含多选）。"
+                    )
+                    ChangelogBlock(
+                        "v1.6.9",
                         "导入订阅/本地配置时拒绝指向本机 7890 的回环代理节点（防代理自环），port/socks-port 强制归零防端口冲突；" +
                             "NOTICE 中 mihomo 许可署名修正为 GPL-3.0；新增 JVM 单元测试（广告拦截、配置校验、地址解析）与 CI lint 门禁。"
                     )
@@ -821,6 +908,12 @@ fun ToolboxSheet(
                     title = "收藏夹",
                     desc = "收藏与管理常用页面"
                 ) { page = "bookmarks" }
+                Spacer(Modifier.height(4.dp))
+                ToolboxRow(
+                    icon = Icons.Default.KeyboardArrowDown,
+                    title = "下载管理",
+                    desc = "下载任务：进度、重试、打开、删除"
+                ) { page = "downloads" }
                 Spacer(Modifier.height(4.dp))
                 ToolboxRow(
                     icon = Icons.Default.Settings,

@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Intent
 import android.content.res.Configuration
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
 import android.view.ContextThemeWrapper
 import android.view.MotionEvent
@@ -13,6 +14,8 @@ import android.view.ViewGroup
 import android.webkit.CookieManager
 import android.webkit.JavascriptInterface
 import android.webkit.PermissionRequest
+import android.webkit.URLUtil
+import android.webkit.ValueCallback
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
@@ -164,6 +167,26 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+    // 网页文件上传：系统文件选择器结果回传给 WebView 的 FilePathCallback
+    private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private val pickFile =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { r ->
+            fileChooserCallback?.onReceiveValue(
+                WebChromeClient.FileChooserParams.parseResult(r.resultCode, r.data)
+            )
+            fileChooserCallback = null
+        }
+
+    fun launchFileChooser(params: WebChromeClient.FileChooserParams, cb: ValueCallback<Array<Uri>>) {
+        fileChooserCallback?.onReceiveValue(null)
+        fileChooserCallback = cb
+        runCatching { pickFile.launch(params.createIntent()) }.onFailure {
+            fileChooserCallback = null
+            cb.onReceiveValue(null)
+            Toast.makeText(this, "无法打开文件选择器", Toast.LENGTH_SHORT).show()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ProxyManager.init(this)
@@ -172,6 +195,7 @@ class MainActivity : ComponentActivity() {
         SessionStore.init(this)
         HomeStore.init(this)
         AdBlocker.init(this)
+        DownloadStore.init(this)
         // 按持久化外观模式设置窗口主题（影响窗口背景与 WebView 的深浅色判定）
         val mode = ProxyManager.themeMode()
         val initialDark = mode == "dark" || (mode == "system" &&
@@ -217,7 +241,8 @@ class MainActivity : ComponentActivity() {
                         onExportBookmarks = {
                             val day = SimpleDateFormat("yyyyMMdd", Locale.getDefault()).format(Date())
                             exportBookmarks.launch("ClashBrowser_书签_$day.html")
-                        }
+                        },
+                        onFileChooser = { p, c -> launchFileChooser(p, c) }
                     )
                 }
             }
@@ -357,7 +382,8 @@ private fun createWebView(
     tab: TabState,
     onTouchDown: () -> Unit = {},
     onLongCtx: (CtxInfo) -> Unit = {},
-    onWindowOpen: (android.os.Message) -> Boolean = { false }
+    onWindowOpen: (android.os.Message) -> Boolean = { false },
+    onFileChooser: (WebChromeClient.FileChooserParams, ValueCallback<Array<Uri>>) -> Unit = { _, cb -> cb.onReceiveValue(null) }
 ): WebView {
     val wv = SecureWebView(context)
     // 触摸网页内容（含空白处）即收起地址栏输入焦点；返回 false 不影响网页自身交互
@@ -426,6 +452,15 @@ private fun createWebView(
         setAcceptCookie(true)
         setAcceptThirdPartyCookies(wv, true)
     }
+    // 非图片下载接管：登记到下载管理器（进度/重试/打开/删除）
+    wv.setDownloadListener { url, ua, disposition, mime, length ->
+        DownloadStore.enqueue(url, ua, disposition, mime, length)
+        Toast.makeText(
+            context,
+            "开始下载：${URLUtil.guessFileName(url, disposition, mime)}",
+            Toast.LENGTH_SHORT
+        ).show()
+    }
     wv.webViewClient = object : WebViewClient() {
         override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
             return if (AdBlocker.shouldBlock(request.url.toString())) AdBlocker.emptyResponse() else null
@@ -466,6 +501,16 @@ private fun createWebView(
         ): Boolean {
             val msg = resultMsg ?: return false
             return onWindowOpen(msg)
+        }
+
+        // 网页文件上传（input type=file）：唤起系统文件选择器，支持多选
+        override fun onShowFileChooser(
+            view: WebView,
+            filePathCallback: ValueCallback<Array<Uri>>,
+            fileChooserParams: FileChooserParams
+        ): Boolean {
+            onFileChooser(fileChooserParams, filePathCallback)
+            return true
         }
 
         override fun onReceivedTitle(view: WebView, title: String?) {
@@ -524,7 +569,8 @@ private fun BrowserScreen(
     themeMode: String,
     onThemeModeChange: (String) -> Unit,
     onImportBookmarks: () -> Unit,
-    onExportBookmarks: () -> Unit
+    onExportBookmarks: () -> Unit,
+    onFileChooser: (WebChromeClient.FileChooserParams, ValueCallback<Array<Uri>>) -> Unit
 ) {
     val context = LocalContext.current
     val rootFocus = LocalFocusManager.current
@@ -729,7 +775,8 @@ private fun BrowserScreen(
                 msg.sendToTarget()
                 activeId = t.id
                 true
-            }
+            },
+            onFileChooser
         ).also { WebViewThemeHelper.apply(it, dark) }
 
     fun exitFullscreen() {
