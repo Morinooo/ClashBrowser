@@ -1,8 +1,8 @@
-mixed-port: 7890
+mixed-port: 17890
 allow-lan: false
 mode: rule
 log-level: info
-external-controller: 127.0.0.1:9090
+external-controller: 127.0.0.1:19090
 secret: ""
 ipv6: false
 unified-delay: true
@@ -12,7 +12,7 @@ find-process-mode: off
 
 dns:
   enable: true
-  listen: 127.0.0.1:1053
+  listen: 127.0.0.1:11053
   ipv6: false
   enhanced-mode: fake-ip
   fake-ip-range: 198.18.0.1/16

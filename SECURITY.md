@@ -52,7 +52,7 @@ Out of scope (report upstream instead):
 These are documented behaviours to avoid duplicate reports:
 
 - **Local ports are reachable by other apps.** While the core is running, the
-  mihomo mixed port (`127.0.0.1:7890`) and REST API (`127.0.0.1:9090`, empty
+  mihomo mixed port (`127.0.0.1:17890`) and REST API (`127.0.0.1:19090`, empty
   secret) listen on loopback. Other apps on the same device can connect to
   them. The app does not restrict this.
 - **`usesCleartextTraffic` is enabled.** The app is a browser and communicates

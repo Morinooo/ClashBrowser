@@ -21,6 +21,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.yaml.snakeyaml.Yaml
 import java.io.File
+import java.net.InetSocketAddress
+import java.net.ServerSocket
 import java.util.concurrent.TimeUnit
 
 enum class CoreState { STOPPED, STARTING, RUNNING, ERROR }
@@ -54,12 +56,27 @@ data class ProfileInfo(
  * mihomo 内核单例管理器：
  * - 子进程启动 / destroyForcibly 销毁
  * - assets 数据库落盘到 filesDir/mihomo
- * - Clash RESTful API（127.0.0.1:9090）：热重载、策略组查询、节点切换、延迟测速
+ * - Clash RESTful API（127.0.0.1:19090）：热重载、策略组查询、节点切换、延迟测速
  * - 订阅拉取 + SnakeYAML 合法性校验 + 多订阅保存
  */
 object ProxyManager {
 
-    private const val API = "http://127.0.0.1:9090"
+    // ------------------------------------------------------------------ 端口策略
+    // 故意避开 Clash 系客户端的默认端口（mixed 7890 / controller 9090 / dns 1053），
+    // 否则本应用挂后台时仍持有这些端口，别的代理软件启动会绑定失败（用户反馈的"抢占"）。
+    // 若专用端口被占用，再向后扫描若干个空闲端口兜底。
+    private const val DEFAULT_MIXED_PORT = 17890
+    private const val DEFAULT_API_PORT = 19090
+    private const val DNS_LISTEN_PORT = 11053
+    private const val PORT_SCAN_RANGE = 10
+
+    /** 本次运行实际使用的混合代理端口 / REST 控制端口（init 时确定）。 */
+    var mixedPort: Int = DEFAULT_MIXED_PORT
+        private set
+    var apiPort: Int = DEFAULT_API_PORT
+        private set
+
+    private val apiBase: String get() = "http://127.0.0.1:$apiPort"
     private const val DELAY_TEST_URL = "http://www.gstatic.com/generate_204"
     private const val MAX_LOG_LINES = 400
 
@@ -123,6 +140,9 @@ object ProxyManager {
             }
         }
         ensureConfigHealthy()
+        // 选端口要放在 ensureBasics 之前：配置里的 mixed-port / external-controller 由它写入
+        mixedPort = findFreePort(DEFAULT_MIXED_PORT)
+        apiPort = findFreePort(DEFAULT_API_PORT)
         // 静置加密：启动时把加密主副本解密到运行目录（内核只读运行明文）
         val master = File(appContext.filesDir, "config.enc")
         if (master.exists()) {
@@ -134,6 +154,21 @@ object ProxyManager {
         apiSecret = newSecret()
         runCatching { configFile.writeText(ensureBasics(configFile.readText())) }
         runCatching { master.writeText(SecretStore.encrypt(configFile.readText())) }
+    }
+
+    /** 从 start 开始找一个能被本机绑定的空闲端口（找不到则退回 start）。 */
+    private fun findFreePort(start: Int): Int {
+        for (port in start until start + PORT_SCAN_RANGE) {
+            val free = runCatching {
+                ServerSocket().use { socket ->
+                    socket.reuseAddress = true
+                    socket.bind(InetSocketAddress("127.0.0.1", port))
+                }
+                true
+            }.getOrDefault(false)
+            if (free) return port
+        }
+        return start
     }
 
     /**
@@ -294,7 +329,7 @@ object ProxyManager {
 
     /** 所有 Clash REST 调用统一带本次会话的 Bearer secret。 */
     private fun apiBuilder(path: String): Request.Builder =
-        Request.Builder().url(API + path).header("Authorization", "Bearer $apiSecret")
+        Request.Builder().url(apiBase + path).header("Authorization", "Bearer $apiSecret")
 
     private fun apiGet(path: String): String? {
         val req = apiBuilder(path).get().build()
@@ -362,8 +397,15 @@ object ProxyManager {
 
     fun currentConfigText(): String = runCatching { configFile.readText() }.getOrDefault("")
 
-    /** 校验 + 落盘 + 热重载（未运行则冷启动）。返回 null 表示成功，否则为错误信息。 */
-    suspend fun saveConfigAndApply(text: String): String? = withContext(Dispatchers.IO) {
+    /**
+     * 校验 + 落盘 + 热重载。返回 null 表示成功，否则为错误信息。
+     * [restartIfStopped] 为 false 时，内核未运行就只写盘不拉起（删除档案等后台整理场景用，
+     * 避免用户关着代理时被意外启动内核）。
+     */
+    suspend fun saveConfigAndApply(
+        text: String,
+        restartIfStopped: Boolean = true
+    ): String? = withContext(Dispatchers.IO) {
         validateYaml(text)?.let { return@withContext it }
         val patched = ensureBasics(text)
         // 原子写入：先写临时文件，备份旧配置，再改名覆盖，避免写入中断导致配置损坏
@@ -377,8 +419,12 @@ object ProxyManager {
         }.onFailure { return@withContext "写入配置失败: ${it.message}" }
         // 静置加密主副本同步更新（运行目录明文仅供内核读取）
         runCatching { File(appContext.filesDir, "config.enc").writeText(SecretStore.encrypt(patched)) }
-        val ok = if (_state.value == CoreState.RUNNING) reloadConfig() else start()
-        if (ok) setMode(preferredMode())
+        val ok = when {
+            _state.value == CoreState.RUNNING -> reloadConfig()
+            restartIfStopped -> start()
+            else -> true
+        }
+        if (ok && _state.value == CoreState.RUNNING) setMode(preferredMode())
         if (ok) null else "配置已保存，但内核重载失败: ${lastError ?: "请查看内核日志"}"
     }
 
@@ -572,8 +618,8 @@ object ProxyManager {
             val m = p as? Map<*, *> ?: continue
             val server = m["server"]?.toString()?.lowercase() ?: continue
             val port = (m["port"] as? Number)?.toInt() ?: continue
-            if (port == 7890 && server in setOf("127.0.0.1", "localhost", "::1", "0.0.0.0")) {
-                return "含回环代理节点 ${m["name"] ?: server}（指向本机 7890，会自环），已拒绝"
+            if (port == mixedPort && server in setOf("127.0.0.1", "localhost", "::1", "0.0.0.0")) {
+                return "含回环代理节点 ${m["name"] ?: server}（指向本机 $mixedPort，会自环），已拒绝"
             }
         }
         return null
@@ -583,12 +629,12 @@ object ProxyManager {
     internal fun ensureBasics(yamlText: String): String {
         var text = yamlText
         val required = linkedMapOf(
-            "mixed-port" to "7890",
+            "mixed-port" to mixedPort.toString(),
             "port" to "0",
             "socks-port" to "0",
             "allow-lan" to "false",
             "bind-address" to "127.0.0.1",
-            "external-controller" to "127.0.0.1:9090",
+            "external-controller" to "127.0.0.1:$apiPort",
             "secret" to "\"$apiSecret\""
         )
         val header = StringBuilder()
@@ -599,6 +645,12 @@ object ProxyManager {
             } else {
                 header.append("$k: $v\n")
             }
+        }
+        // dns.listen 若由订阅配置提供，同样挪到专用端口：与其它 Clash 客户端的
+        // 默认 1053 冲突时内核会因绑定失败而启动不起来。只改 dns 下的二级键。
+        val dnsListen = Regex("(?m)^(  )listen:\\s*.*$")
+        if (dnsListen.containsMatchIn(text)) {
+            text = dnsListen.replace(text, "$1listen: 127.0.0.1:$DNS_LISTEN_PORT")
         }
         return header.toString() + text
     }
@@ -711,5 +763,33 @@ object ProxyManager {
         if (activeSub() == url) {
             setActiveSub(list.firstOrNull() ?: "")
         }
+    }
+
+    /**
+     * 删除订阅档案并同步运行态（面板删除入口用）。
+     * - 删的不是当前生效档案：只删档案，不动运行配置。
+     * - 删的是当前生效档案且还有其它档案：自动切换到剩余第一个档案并热重载。
+     * - 删的是最后一个档案：恢复默认空配置（proxies 为空、MATCH,DIRECT），让旧的
+     *   策略组/节点真正消失；内核未运行时只写盘，不擅自拉起内核。
+     * 返回 null 表示成功，否则为错误信息。
+     */
+    suspend fun removeSubscriptionAndApply(url: String): String? = withContext(Dispatchers.IO) {
+        val wasActive = activeSub() == url
+        removeSubscription(url)
+        if (!wasActive) return@withContext null
+        val remaining = listSubscriptions()
+        if (remaining.isNotEmpty()) {
+            val next = remaining.first()
+            val text = readProfile(next) ?: return@withContext updateSubscription(next)
+            val err = saveConfigAndApply(text, restartIfStopped = false)
+            if (err == null) setActiveSub(next)
+            return@withContext err
+        }
+        val fallback = runCatching {
+            appContext.assets.open("default_config.yaml").use { it.readBytes().toString(Charsets.UTF_8) }
+        }.getOrNull() ?: return@withContext null
+        val err = saveConfigAndApply(fallback, restartIfStopped = false)
+        if (err == null) setActiveSub("")
+        err
     }
 }

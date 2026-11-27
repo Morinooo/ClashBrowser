@@ -53,7 +53,7 @@ The idea is simple: put the Clash configuration centre *inside* the browser, and
 
 ### Embedded proxy core
 - Bundled mihomo core runs as a **child process**; started, stopped and restarted by the app
-- WebView traffic proxied through `127.0.0.1:7890` with `androidx.webkit.ProxyController` (no VPN, no root)
+- WebView traffic proxied through `127.0.0.1:17890` with `androidx.webkit.ProxyController` (no VPN, no root)
 - Subscription import (URL), YAML validation, atomic config writes, backup self-healing, hot reload
 - Profile cards with name, traffic usage / total, expiry date, usage bar and relative update time (from the `subscription-userinfo` header)
 - Node and policy-group list (Selector / URLTest / Fallback / LoadBalance), per-node latency test, batch speed test
@@ -131,14 +131,14 @@ Screenshots are not committed yet — no fabricated images are used in this repo
                 └──────┬───────────────────────┬──────────────────────┘
                        │ ProcessBuilder        │ OkHttp
                        ▼                       ▼
-        libmihomo.so (child process)   http://127.0.0.1:9090
-        mixed-port 127.0.0.1:7890      (/version /proxies /configs /delay)
+        libmihomo.so (child process)   http://127.0.0.1:19090
+        mixed-port 127.0.0.1:17890     (/version /proxies /configs /delay)
                        ▲
                        │ HTTP proxy
         ┌──────────────┴──────────────┐
         │  System WebView network     │
         │  ProxyController            │
-        │  127.0.0.1:7890             │
+        │  127.0.0.1:17890            │
         └──────────────┬──────────────┘
                        ▼
              Web pages / DRM streams
@@ -147,9 +147,9 @@ Screenshots are not committed yet — no fabricated images are used in this repo
 ### How it works
 
 1. On first launch the core binary and Geo databases are placed under the app's `filesDir/mihomo`, the core is started as a child process (`libmihomo.so -d filesDir/mihomo`) and the app waits until `GET /version` responds.
-2. The WebView proxy override is applied with `ProxyController.setProxyOverride(http://127.0.0.1:7890)`. Only this app's WebView uses it; the system and other apps are untouched, and no VPN permission is involved.
+2. The WebView proxy override is applied with `ProxyController.setProxyOverride(http://127.0.0.1:17890)`. Only this app's WebView uses it; the system and other apps are untouched, and no VPN permission is involved.
 3. HTTPS requests reach mihomo as `CONNECT` tunnels, so mihomo resolves the destination and applies the subscription's rules and policy groups itself.
-4. Configuration is validated, forced to keep `mixed-port: 7890` / `external-controller: 127.0.0.1:9090`, written atomically and hot-reloaded through `PUT /configs?force=true`.
+4. Configuration is validated, forced to keep `mixed-port: 17890` / `external-controller: 127.0.0.1:19090`, written atomically and hot-reloaded through `PUT /configs?force=true`.
 5. The app watches the core process: if it dies while the app is in the foreground it is restarted after ~1.5 s, and if it died while the app was in the background it is restarted on return to foreground.
 
 ### Project structure
@@ -226,7 +226,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Current status
 
-Version **1.16.1** (`versionCode 25`), actively developed. Version names follow
+Version **1.16.2** (`versionCode 26`), actively developed. Version names follow
 semver (feature = minor, fix = patch); see CHANGELOG for the old→new map.
 
 | Area | Status |
@@ -254,7 +254,7 @@ semver (feature = minor, fix = patch); see CHANGELOG for the old→new map.
 - **Ad blocking is a small built-in host list** plus user-marked domains; it is not a rule-subscription engine and cannot be toggled.
 - **DRM playback depends on the system WebView provider and Widevine availability.** On devices without a usable CDM, the app falls back to non-encrypted streams after a 4-second EME probe timeout.
 - **The proxy applies only if the WebView provider supports `ProxyController`**; otherwise the app silently falls back to a direct connection.
-- **The local mihomo API (`127.0.0.1:9090`, empty secret) and mixed port (`127.0.0.1:7890`) are reachable by other apps on the same device while the core is running.**
+- **The local mihomo API (`127.0.0.1:19090`, empty secret) and mixed port (`127.0.0.1:17890`) are reachable by other apps on the same device while the core is running.**
 - **The core and Geo data are downloaded at build time from GitHub's "latest" release without checksum pinning**, which makes builds non-reproducible.
 - **Two signing channels:** CI tag builds produce a release-signed APK; manually delivered APKs are debug-signed. The two signatures cannot overwrite-install each other — pick one channel.
 - **Run-mode preference** is re-applied when a configuration is saved or the core is restarted manually; after a cold start the mode stored in `config.yaml` is used.

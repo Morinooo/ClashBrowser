@@ -15,14 +15,18 @@ import kotlin.coroutines.resume
  */
 object WebViewProxyHelper {
 
-    private const val PROXY_RULE = "http://127.0.0.1:7890"
+    /**
+     * 指向本机内核混合端口。端口在 ProxyManager.init 中按空闲情况选择，
+     * 默认 17890（避开 Clash 系客户端默认的 7890，避免与其它代理软件抢端口）。
+     */
+    private fun proxyRule(): String = "http://127.0.0.1:${ProxyManager.mixedPort}"
 
     /** 返回 true 表示代理规则已生效（回调已触发）。失败时 WebView 保持直连。 */
     suspend fun applyProxy(context: Context): Boolean = withContext(Dispatchers.Main) {
         suspendCancellableCoroutine { cont ->
             try {
                 val config = ProxyConfig.Builder()
-                    .addProxyRule(PROXY_RULE)
+                    .addProxyRule(proxyRule())
                     .addBypassRule("<local>")
                     .build()
                 ProxyController.getInstance().setProxyOverride(

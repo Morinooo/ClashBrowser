@@ -19,22 +19,38 @@ class ProxyConfigTest {
     """.trimIndent()
 
     @Test
-    fun basicsForcePortsAndController() {
+    fun basicsForceDedicatedPortsAndController() {
         val out = ProxyManager.ensureBasics(good)
-        assertTrue(out.contains("mixed-port: 7890"))
+        // v1.16.2：内核改用专用端口，避免与其它 Clash 客户端默认端口（7890/9090）抢占
+        assertTrue(out.contains("mixed-port: 17890"))
         assertTrue(out.contains("port: 0"))
         assertTrue(out.contains("socks-port: 0"))
         assertTrue(out.contains("allow-lan: false"))
-        assertTrue(out.contains("external-controller: 127.0.0.1:9090"))
+        assertTrue(out.contains("external-controller: 127.0.0.1:19090"))
         // 节点自身的 port 不应被顶层归一误伤
         assertTrue(out.contains("port: 8388"))
+    }
+
+    @Test
+    fun dnsListenMovedToDedicatedPort() {
+        val withDns = """
+            proxies: []
+            dns:
+              enable: true
+              listen: 127.0.0.1:1053
+              nameserver:
+                - 223.5.5.5
+        """.trimIndent()
+        val out = ProxyManager.ensureBasics(withDns)
+        assertTrue(out.contains("listen: 127.0.0.1:11053"))
+        assertTrue(!out.contains("127.0.0.1:1053"))
     }
 
     @Test
     fun rejectsLoopbackNodeOnMixedPort() {
         val bad = good
             .replace("server: 1.2.3.4", "server: 127.0.0.1")
-            .replace("port: 8388", "port: 7890")
+            .replace("port: 8388", "port: 17890")
         assertNotNull(ProxyManager.validateYaml(bad))
     }
 

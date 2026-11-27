@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -97,6 +98,7 @@ fun ProxyPanel(
     val logs by ProxyManager.logs.collectAsState()
 
     var profiles by remember { mutableStateOf(ProxyManager.listProfiles()) }
+    var pendingDelete by remember { mutableStateOf<ProfileInfo?>(null) }
     var subUrl by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf(false) }
     var message by remember { mutableStateOf<String?>(null) }
@@ -129,7 +131,16 @@ fun ProxyPanel(
     }
 
     LaunchedEffect(coreState) {
-        if (coreState == CoreState.RUNNING) refresh()
+        if (coreState == CoreState.RUNNING) {
+            refresh()
+        } else {
+            // 内核未运行时清掉上一次的节点/策略组缓存，避免面板里残留"僵尸节点"
+            // （用户看到"内核未运行"但下面还挂着已删除订阅的策略组）
+            groups = emptyList()
+            delays = emptyMap()
+            nodeTypes = emptyMap()
+            coreVersion = null
+        }
     }
 
     LazyColumn(
@@ -162,7 +173,7 @@ fun ProxyPanel(
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            coreVersion?.let { "mihomo $it · 混合端口 7890" }
+                            coreVersion?.let { "mihomo $it · 混合端口 ${ProxyManager.mixedPort}" }
                                 ?: (ProxyManager.lastError ?: "未配置节点时内核走直连规则"),
                             fontSize = 11.sp,
                             color = Color.Gray,
@@ -355,10 +366,7 @@ fun ProxyPanel(
                         }
                     }
                 },
-                onDelete = {
-                    ProxyManager.removeSubscription(p.url)
-                    profiles = ProxyManager.listProfiles()
-                }
+                onDelete = { pendingDelete = p }
             )
         }
 
@@ -510,6 +518,45 @@ fun ProxyPanel(
                 }
             }
         }
+    }
+
+    // ---------- 删除配置确认 ----------
+    pendingDelete?.let { p ->
+        AlertDialog(
+            onDismissRequest = { pendingDelete = null },
+            title = { Text("删除配置") },
+            text = {
+                val activeHint = if (p.active) {
+                    "\n\n该配置当前正在生效：删除后会切换到其它配置；若无其它配置，将恢复为默认直连配置。"
+                } else {
+                    ""
+                }
+                Text("将删除配置档案「${p.name}」及本地保存的 YAML 副本，删除后不可恢复。$activeHint")
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = !busy,
+                    onClick = {
+                        pendingDelete = null
+                        scope.launch {
+                            busy = true
+                            val err = ProxyManager.removeSubscriptionAndApply(p.url)
+                            busy = false
+                            profiles = ProxyManager.listProfiles()
+                            // 先清掉旧节点/策略组缓存，避免删除后仍显示上一个订阅的节点
+                            groups = emptyList()
+                            delays = emptyMap()
+                            nodeTypes = emptyMap()
+                            if (ProxyManager.state.value == CoreState.RUNNING) refresh()
+                            toast(if (err == null) "已删除配置：${p.name}" else err)
+                        }
+                    }
+                ) { Text("删除", color = MaterialTheme.colorScheme.error) }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDelete = null }) { Text("取消") }
+            }
+        )
     }
 
     // ---------- 手动 YAML 编辑器（全屏对话框） ----------

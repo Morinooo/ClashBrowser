@@ -51,7 +51,7 @@ ClashBrowser **不内置**任何订阅、节点或代理服务，你需要自备
 
 ### 内置代理内核
 - 内置 mihomo 以**子进程**运行，由 App 启动、停止、重启
-- WebView 流量通过 `androidx.webkit.ProxyController` 指向 `127.0.0.1:7890`（免 VPN、免 root）
+- WebView 流量通过 `androidx.webkit.ProxyController` 指向 `127.0.0.1:17890`（免 VPN、免 root）
 - 订阅链接导入、YAML 校验、原子写入、备份自愈、热重载
 - 配置档案卡片：名称、流量用量 / 总量、到期日期、用量进度条、相对更新时间（解析 `subscription-userinfo` 响应头）
 - 节点与策略组列表（Selector / URLTest / Fallback / LoadBalance）、单节点测速、批量测速
@@ -129,14 +129,14 @@ ClashBrowser **不内置**任何订阅、节点或代理服务，你需要自备
                 └──────┬───────────────────────┬──────────────────────┘
                        │ ProcessBuilder        │ OkHttp
                        ▼                       ▼
-        libmihomo.so（子进程）        http://127.0.0.1:9090
-        mixed-port 127.0.0.1:7890     (/version /proxies /configs /delay)
+        libmihomo.so（子进程）        http://127.0.0.1:19090
+        mixed-port 127.0.0.1:17890    (/version /proxies /configs /delay)
                        ▲
                        │ HTTP 代理
         ┌──────────────┴──────────────┐
         │  系统 WebView 网络栈         │
         │  ProxyController            │
-        │  127.0.0.1:7890             │
+        │  127.0.0.1:17890            │
         └──────────────┬──────────────┘
                        ▼
                 网页 / DRM 流媒体
@@ -145,9 +145,9 @@ ClashBrowser **不内置**任何订阅、节点或代理服务，你需要自备
 ### 工作原理
 
 1. 首次启动时把内核二进制与 Geo 数据库放到应用 `filesDir/mihomo`，以子进程方式启动内核（`libmihomo.so -d filesDir/mihomo`），并轮询 `GET /version` 直到就绪。
-2. 通过 `ProxyController.setProxyOverride(http://127.0.0.1:7890)` 设置 WebView 代理。只有本应用 WebView 使用它，系统与其它应用不受影响，也不涉及 VPN 权限。
+2. 通过 `ProxyController.setProxyOverride(http://127.0.0.1:17890)` 设置 WebView 代理。只有本应用 WebView 使用它，系统与其它应用不受影响，也不涉及 VPN 权限。
 3. HTTPS 请求以 `CONNECT` 隧道到达 mihomo，由内核解析目标域名并应用订阅中的规则与策略组。
-4. 配置经校验、强制保留 `mixed-port: 7890` / `external-controller: 127.0.0.1:9090` 后原子写入，并通过 `PUT /configs?force=true` 热重载。
+4. 配置经校验、强制保留 `mixed-port: 17890` / `external-controller: 127.0.0.1:19090` 后原子写入，并通过 `PUT /configs?force=true` 热重载。
 5. App 监视内核进程：前台被杀约 1.5 秒后重启；后台被杀则在回到前台时重启并重新绑定代理。
 
 ### 目录结构
@@ -224,7 +224,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## 当前开发状态
 
-版本 **1.16.1**（`versionCode 25`），持续开发中。版本名遵循 semver（新增功能=次版本、修复=修订号），旧号对照见 CHANGELOG。
+版本 **1.16.2**（`versionCode 26`），持续开发中。版本名遵循 semver（新增功能=次版本、修复=修订号），旧号对照见 CHANGELOG。
 
 | 模块 | 状态 |
 |---|---|
@@ -251,7 +251,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - **广告拦截是内置小型域名表** + 用户标记，不是规则订阅引擎，也没有开关。
 - **DRM 播放依赖系统 WebView 与 Widevine**；无可用的 CDM 时，EME 探测 4 秒超时后回退非加密流。
 - **只有当 WebView 提供方支持 `ProxyController` 时代理才生效**，否则静默降级为直连。
-- **代理运行期间，本机 mihomo API（`127.0.0.1:9090`，空 secret）与混合端口（`127.0.0.1:7890`）对同设备其它应用可达。**
+- **代理运行期间，本机 mihomo API（`127.0.0.1:19090`，空 secret）与混合端口（`127.0.0.1:17890`）对同设备其它应用可达。**
 - **内核与 Geo 数据在构建时从 GitHub 的 "latest" 下载且无校验固定**，构建不可复现。
 - **两种签名渠道**：CI tag 构建产出 release 签名包；手动交付的 APK 为 debug 签名。两者签名不同、不能互相覆盖安装，请选定一个渠道。
 - **运行模式偏好**在保存配置或手动重启内核时恢复；冷启动后使用 `config.yaml` 中记录的模式。

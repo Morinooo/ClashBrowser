@@ -33,7 +33,7 @@ object MediaActions {
             .readTimeout(30, TimeUnit.SECONDS)
             .followRedirects(true)
         if (ProxyManager.isProxyEnabled()) {
-            b.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", 7890)))
+            b.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("127.0.0.1", ProxyManager.mixedPort)))
         }
         return b.build()
     }

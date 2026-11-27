@@ -1051,7 +1051,7 @@ fun ToolboxSheet(
                     Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())
                 ) {
                     Text("ClashBrowser", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("v1.16.1 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
+                    Text("v1.16.2 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
                     Text("Made by Morin with Qwen.", fontSize = 11.sp, color = Color.Gray)
                     Spacer(Modifier.height(16.dp))
 
@@ -1074,7 +1074,15 @@ fun ToolboxSheet(
                     )
                     Spacer(Modifier.height(6.dp))
                     ChangelogBlock(
-                        "v1.16.1（当前）",
+                        "v1.16.2（当前）",
+                        "修复删除配置后残留旧策略组/节点：删除订阅时二次确认，删除当前生效配置会自动切到剩余配置、" +
+                            "删掉最后一个配置则恢复默认直连配置；内核未运行时清空面板节点缓存，不再显示已失效的节点。" +
+                            "修复与其它代理软件抢端口：内核混合端口/控制端口改为专用端口（17890/19090，自动避让占用），" +
+                            "DNS 监听端口改为 11053，应用挂后台时不再占用其它 Clash 客户端的默认端口。"
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    ChangelogBlock(
+                        "v1.16.1",
                         "安全加固五项：配置显式 bind-address 127.0.0.1 + 每次启动随机 API secret（全部 REST 调用带鉴权）；" +
                             "WebRTC 防泄露（无痕强制禁用 RTCPeerConnection，普通标签更多里可开关）；" +
                             "订阅链接/日志默认掩码 token 参数，订阅与配置 Keystore AES/GCM 加密静置、退出清运行明文，" +
@@ -1112,7 +1120,7 @@ fun ToolboxSheet(
                     )
                     ChangelogBlock(
                         "v1.13.2",
-                        "导入订阅/本地配置时拒绝指向本机 7890 的回环代理节点（防代理自环），port/socks-port 强制归零防端口冲突；" +
+                        "导入订阅/本地配置时拒绝指向本机混合端口的回环代理节点（防代理自环），port/socks-port 强制归零防端口冲突；" +
                             "NOTICE 中 mihomo 许可署名修正为 GPL-3.0；新增 JVM 单元测试（广告拦截、配置校验、地址解析）与 CI lint 门禁。"
                     )
                     ChangelogBlock(

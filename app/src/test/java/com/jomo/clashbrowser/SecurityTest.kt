@@ -41,7 +41,7 @@ class SecurityTest {
         val out = ProxyManager.ensureBasics("proxies: []\n")
         assertTrue(out.contains("bind-address: 127.0.0.1"))
         assertTrue(out.contains("allow-lan: false"))
-        assertTrue(out.contains("external-controller: 127.0.0.1:9090"))
+        assertTrue(out.contains("external-controller: 127.0.0.1:19090"))
         assertTrue(Regex("(?m)^secret: \"[0-9a-f]{32}\"$").containsMatchIn(out))
     }
 

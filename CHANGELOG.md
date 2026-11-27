@@ -17,6 +17,27 @@ installed apps can always upgrade; only `versionName` / tags were reorganized.
 1.7.0→1.14.0. GitHub releases were retagged accordingly (v1.13.0 / v1.13.1 /
 v1.13.2 / v1.14.0); older history never had published releases.
 
+## [1.16.2] — versionCode 26
+
+### Fixed
+- Deleting a subscription profile in the proxy panel did not remove the previous
+  profile's policy groups / nodes from the panel, and a deleted profile kept
+  running if it was the active one. Deleting now asks for confirmation, applies
+  the next remaining profile automatically, resets to the default direct config
+  when the last profile is removed, and clears node/group caches whenever the
+  core is not running (no more "内核未运行" with a stale node list).
+- The embedded core held the Clash-default local ports while the app sat in the
+  background, so another proxy app started afterwards could fail to bind
+  `7890` / `9090` (and DNS `1053`) and appear broken. The core now listens on
+  dedicated ports — `mixed-port: 17890`, `external-controller
+  127.0.0.1:19090`, DNS `127.0.0.1:11053` — with automatic fallback to the next
+  free port when a dedicated port is already occupied. Subscription-provided
+  `dns.listen` is rewritten to the dedicated port as well.
+
+### Changed
+- Docs (EN/ZH README, SECURITY), the in-app About version/changelog, and the
+  proxy panel status line now reference the dedicated ports.
+
 ## [1.16.1] — versionCode 25
 
 ### Security
