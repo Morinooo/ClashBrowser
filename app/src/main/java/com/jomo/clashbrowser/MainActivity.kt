@@ -377,6 +377,7 @@ private const val READER_SCRIPT = """
  */
 private const val EME_FALLBACK_SCRIPT = """
 (function () {
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
   try {
     function race(orig, args, ms) {
       return new Promise(function (resolve, reject) {
@@ -417,6 +418,7 @@ private fun mobileUa(context: android.content.Context): String =
 /** 触摸即捕获命中元素上下文（链接/图片/可点击标记），供长按菜单使用。 */
 private const val CTX_CAPTURE_SCRIPT = """
 (function () {
+  if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
   try {
     document.addEventListener('touchstart', function (e) {
       try {
@@ -482,11 +484,23 @@ const val DESKTOP_UA =
 /** WebRTC 防泄露：document-start 禁用 RTCPeerConnection，避免 ICE 候选地址暴露代理后真实 IP。 */
 const val WEBRTC_BLOCK_SCRIPT = """
 (function(){
+if (location.protocol !== 'http:' && location.protocol !== 'https:') return;
 try{Object.defineProperty(window,'RTCPeerConnection',{value:undefined,writable:false,configurable:false});}
 catch(e){window.RTCPeerConnection=undefined;}
 window.webkitRTCPeerConnection=undefined;window.mozRTCPeerConnection=undefined;
 })();
 """
+
+/**
+ * document-start 脚本的允许来源规则。
+ *
+ * WebView 只接受规范格式：`*`（全部来源）、`https://example.com`、`https://*.example.com`。
+ * 绝不能写成 `http://*` / `https://*`——v1.16.1 曾这样写，旧 WebView 不校验侥幸能用，
+ * 但 WebView 150（Chromium 新版）会抛 IllegalArgumentException: allowedOriginRules … is invalid，
+ * 导致创建 WebView 时闪退（v1.16.4 修复）。脚本内部各自做 `location.protocol` 守卫，
+ * 因此这里用全来源 `*` 也不会作用到 file:// 等非 http(s) 文档。
+ */
+internal val DOCUMENT_START_ORIGINS: Set<String> = setOf("*")
 
 @SuppressLint("SetJavaScriptEnabled", "ClickableViewAccessibility")
 private fun createWebView(
@@ -508,14 +522,13 @@ private fun createWebView(
         if (event.actionMasked == MotionEvent.ACTION_DOWN) onTouchDown()
         false
     }
-    // DRM 探测挂起回退（详见 EME_FALLBACK_SCRIPT 注释）；注入作用域限定 http/https，不含 file:// 等
     if (WebViewFeature.isFeatureSupported(WebViewFeature.DOCUMENT_START_SCRIPT)) {
-        val origins = setOf("http://*", "https://*")
-        WebViewCompat.addDocumentStartJavaScript(wv, EME_FALLBACK_SCRIPT, origins)
-        WebViewCompat.addDocumentStartJavaScript(wv, CTX_CAPTURE_SCRIPT, origins)
+        val origins = DOCUMENT_START_ORIGINS
+        runCatching { WebViewCompat.addDocumentStartJavaScript(wv, EME_FALLBACK_SCRIPT, origins) }
+        runCatching { WebViewCompat.addDocumentStartJavaScript(wv, CTX_CAPTURE_SCRIPT, origins) }
         // WebRTC 防泄露：无痕强制、普通标签依开关，禁用 RTCPeerConnection 防 ICE 候选地址暴露真实 IP
         if (tab.incognito || ProxyManager.isWebRtcBlock()) {
-            WebViewCompat.addDocumentStartJavaScript(wv, WEBRTC_BLOCK_SCRIPT, origins)
+            runCatching { WebViewCompat.addDocumentStartJavaScript(wv, WEBRTC_BLOCK_SCRIPT, origins) }
         }
     }
     wv.addJavascriptInterface(object {

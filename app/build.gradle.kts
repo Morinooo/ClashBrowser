@@ -16,8 +16,8 @@ android {
         applicationId = "com.jomo.clashbrowser"
         minSdk = 26
         targetSdk = 34
-        versionCode = 27
-        versionName = "1.16.3"
+        versionCode = 28
+        versionName = "1.16.4"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 

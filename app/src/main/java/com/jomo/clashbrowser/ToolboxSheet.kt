@@ -1051,7 +1051,7 @@ fun ToolboxSheet(
                     Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())
                 ) {
                     Text("ClashBrowser", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("v1.16.3 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
+                    Text("v1.16.4 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
                     Text("Made by Morin with Qwen.", fontSize = 11.sp, color = Color.Gray)
                     Spacer(Modifier.height(16.dp))
 
@@ -1074,7 +1074,15 @@ fun ToolboxSheet(
                     )
                     Spacer(Modifier.height(6.dp))
                     ChangelogBlock(
-                        "v1.16.3（当前）",
+                        "v1.16.4（当前）",
+                        "修复输入网址回车即闪退的根因：页面预注入脚本的来源规则此前写成了非法的 " +
+                            "\"http://*\" / \"https://*\"，WebView 150（Chromium 新版）严格校验后会抛 " +
+                            "IllegalArgumentException；改用合法规则（全来源 *），并在注入脚本内部按 " +
+                            "http/https 协议自我限制，保持原有安全作用域；每个预注入调用单独容错，不再拖垮网页视图。"
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    ChangelogBlock(
+                        "v1.16.3",
                         "紧急修复部分设备上「输入网址回车即闪退」：网页视图（系统 WebView）创建/加载失败时不再让应用闪退，" +
                             "改为显示可操作的错误说明页（含更新/清除 WebView 数据的入口，可复制错误详情）；" +
                             "新增本地崩溃诊断（未捕获异常与网页视图会话痕迹写入应用私有目录，下次启动可查看/复制，不上传）；" +

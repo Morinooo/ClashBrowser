@@ -17,6 +17,31 @@ installed apps can always upgrade; only `versionName` / tags were reorganized.
 1.7.0→1.14.0. GitHub releases were retagged accordingly (v1.13.0 / v1.13.1 /
 v1.13.2 / v1.14.0); older history never had published releases.
 
+## [1.16.4] — versionCode 28
+
+### Fixed
+- Root cause of the "type a URL, press Enter, instant crash" report: the
+  document-start scripts were registered with `allowedOriginRules`
+  `{"http://*", "https://*"}`, which is **not** a valid WebView origin rule.
+  Older WebViews did not validate it, but Chromium/WebView 150 throws
+  `IllegalArgumentException: allowedOriginRules http://* is invalid` while the
+  WebView is being created — hence every version since v1.16.1 crashed on the
+  first page load on that WebView build, including reinstalled older APKs.
+  (v1.16.3's crash containment is what surfaced the message instead of a silent
+  exit.)
+- Origin rules now use the valid all-origins form `*`, and the three injected
+  scripts (EME fallback, touch-context capture, WebRTC leak block) each check
+  `location.protocol` themselves, so the v1.16.1 security intent — do not inject
+  into `file://` and other non-http(s) documents — is preserved.
+- Each `addDocumentStartJavaScript` call is individually guarded, so a future
+  WebView-origin-rule change degrades at most the optional enhancements instead
+  of breaking the browser.
+
+### Added
+- Unit test `WebViewScriptsTest` asserting the origin rules match the WebView
+  format, that `http://*` / `https://*` cannot come back, and that the injected
+  script scopes itself to http(s).
+
 ## [1.16.3] — versionCode 27
 
 ### Fixed
