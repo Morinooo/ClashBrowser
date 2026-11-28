@@ -224,7 +224,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## 当前开发状态
 
-版本 **1.16.2**（`versionCode 26`），持续开发中。版本名遵循 semver（新增功能=次版本、修复=修订号），旧号对照见 CHANGELOG。
+版本 **1.16.3**（`versionCode 27`），持续开发中。版本名遵循 semver（新增功能=次版本、修复=修订号），旧号对照见 CHANGELOG。
 
 | 模块 | 状态 |
 |---|---|
@@ -250,6 +250,8 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 - **未实现站点权限管理。**
 - **广告拦截是内置小型域名表** + 用户标记，不是规则订阅引擎，也没有开关。
 - **DRM 播放依赖系统 WebView 与 Widevine**；无可用的 CDM 时，EME 探测 4 秒超时后回退非加密流。
+- **需要可用的系统 WebView**：若 Android System WebView 缺失、被停用或在本机崩溃，网页无法渲染；
+  应用现在会显示可操作的错误说明页而不是闪退，"安全模式"会跳过 WebView 代理设置，至少可直连上网。
 - **只有当 WebView 提供方支持 `ProxyController` 时代理才生效**，否则静默降级为直连。
 - **代理运行期间，本机 mihomo API（`127.0.0.1:19090`，空 secret）与混合端口（`127.0.0.1:17890`）对同设备其它应用可达。**
 - **内核与 Geo 数据在构建时从 GitHub 的 "latest" 下载且无校验固定**，构建不可复现。

@@ -1051,7 +1051,7 @@ fun ToolboxSheet(
                     Modifier.heightIn(max = 480.dp).verticalScroll(rememberScrollState())
                 ) {
                     Text("ClashBrowser", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                    Text("v1.16.2 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
+                    Text("v1.16.3 · 轻量无广告代理浏览器", fontSize = 12.sp, color = Color.Gray)
                     Text("Made by Morin with Qwen.", fontSize = 11.sp, color = Color.Gray)
                     Spacer(Modifier.height(16.dp))
 
@@ -1074,7 +1074,16 @@ fun ToolboxSheet(
                     )
                     Spacer(Modifier.height(6.dp))
                     ChangelogBlock(
-                        "v1.16.2（当前）",
+                        "v1.16.3（当前）",
+                        "紧急修复部分设备上「输入网址回车即闪退」：网页视图（系统 WebView）创建/加载失败时不再让应用闪退，" +
+                            "改为显示可操作的错误说明页（含更新/清除 WebView 数据的入口，可复制错误详情）；" +
+                            "新增本地崩溃诊断（未捕获异常与网页视图会话痕迹写入应用私有目录，下次启动可查看/复制，不上传）；" +
+                            "新增安全模式：上次打开网页时异常退出则本次跳过给 WebView 设置代理，先保证直连可用，页顶可一键重试代理；" +
+                            "给 WebView 设置代理前先检测系统是否支持该能力，不支持则直接直连。"
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    ChangelogBlock(
+                        "v1.16.2",
                         "修复删除配置后残留旧策略组/节点：删除订阅时二次确认，删除当前生效配置会自动切到剩余配置、" +
                             "删掉最后一个配置则恢复默认直连配置；内核未运行时清空面板节点缓存，不再显示已失效的节点。" +
                             "修复与其它代理软件抢端口：内核混合端口/控制端口改为专用端口（17890/19090，自动避让占用），" +

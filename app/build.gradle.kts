@@ -16,8 +16,8 @@ android {
         applicationId = "com.jomo.clashbrowser"
         minSdk = 26
         targetSdk = 34
-        versionCode = 26
-        versionName = "1.16.2"
+        versionCode = 27
+        versionName = "1.16.3"
         ndk { abiFilters += listOf("arm64-v8a") }
     }
 
@@ -60,7 +60,10 @@ android {
     }
     kotlinOptions { jvmTarget = "17" }
 
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
     composeOptions { kotlinCompilerExtensionVersion = "1.5.14" }
 
     // 等价于 manifest 的 extractNativeLibs=true：安装时把 libmihomo.so 解压到磁盘以便执行

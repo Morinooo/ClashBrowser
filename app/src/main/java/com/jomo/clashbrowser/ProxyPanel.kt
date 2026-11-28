@@ -186,7 +186,7 @@ fun ProxyPanel(
                             busy = true
                             ProxyManager.shutdown()
                             val ok = ProxyManager.start()
-                            val pr = if (ok) WebViewProxyHelper.applyProxy(context) else false
+                            val pr = if (ok) WebViewProxyHelper.applyProxy(context, force = true) else false
                             onProxyReadyChange(pr)
                             if (ok) {
                                 ProxyManager.setMode(ProxyManager.preferredMode())
@@ -212,7 +212,7 @@ fun ProxyPanel(
                                     // 先启动内核并绑定 WebView 代理，全部就绪后才持久化"启用"，
                                     // 失败则回滚开关，杜绝"开关显示开、实际直连"的静默失败
                                     val ok = ProxyManager.start()
-                                    val pr = if (ok) WebViewProxyHelper.applyProxy(context) else false
+                                    val pr = if (ok) WebViewProxyHelper.applyProxy(context, force = true) else false
                                     if (ok && pr) {
                                         ProxyManager.setProxyEnabled(true)
                                         onProxyEnabledChange(true)
@@ -308,7 +308,7 @@ fun ProxyPanel(
                                 ProxyManager.addSubscription(subUrl.trim())
                                 profiles = ProxyManager.listProfiles()
                                 if (ProxyManager.state.value == CoreState.RUNNING) {
-                                    onProxyReadyChange(WebViewProxyHelper.applyProxy(context))
+                                    onProxyReadyChange(WebViewProxyHelper.applyProxy(context, force = true))
                                 }
                                 refresh()
                                 message = null
@@ -339,7 +339,7 @@ fun ProxyPanel(
                         if (err == null) {
                             profiles = ProxyManager.listProfiles()
                             if (ProxyManager.state.value == CoreState.RUNNING) {
-                                onProxyReadyChange(WebViewProxyHelper.applyProxy(context))
+                                onProxyReadyChange(WebViewProxyHelper.applyProxy(context, force = true))
                             }
                             refresh()
                             toast("已切换配置：${p.name}")
@@ -357,7 +357,7 @@ fun ProxyPanel(
                             ProxyManager.addSubscription(p.url)
                             profiles = ProxyManager.listProfiles()
                             if (ProxyManager.state.value == CoreState.RUNNING) {
-                                onProxyReadyChange(WebViewProxyHelper.applyProxy(context))
+                                onProxyReadyChange(WebViewProxyHelper.applyProxy(context, force = true))
                             }
                             refresh()
                             toast("订阅已更新：${p.name}")
@@ -588,7 +588,7 @@ fun ProxyPanel(
                                     ProxyManager.markCustomConfig()
                                     profiles = ProxyManager.listProfiles()
                                     if (ProxyManager.state.value == CoreState.RUNNING) {
-                                        onProxyReadyChange(WebViewProxyHelper.applyProxy(context))
+                                        onProxyReadyChange(WebViewProxyHelper.applyProxy(context, force = true))
                                     }
                                     refresh()
                                     showEditor = false

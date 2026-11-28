@@ -18,6 +18,8 @@ class CoreKeeperService : Service() {
         // 用户主动划掉应用 = 正常退出，下次启动不弹恢复弹窗
         SessionStore.init(this)
         SessionStore.markCleanExit()
+        // 正常退出时清掉"网页视图会话进行中"标记，避免下次被误判为崩溃而进安全模式
+        Diagnostics.webViewSessionEnded()
         ProxyManager.shutdown(wipeRuntime = true)
         stopSelf()
         super.onTaskRemoved(rootIntent)

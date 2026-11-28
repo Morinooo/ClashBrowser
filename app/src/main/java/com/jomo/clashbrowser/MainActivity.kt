@@ -230,6 +230,8 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // 崩溃诊断/安全模式要尽早初始化，赶在任何 WebView 相关代码之前
+        Diagnostics.init(this)
         ProxyManager.init(this)
         HistoryStore.init(this)
         BookmarkStore.init(this)
@@ -293,7 +295,10 @@ class MainActivity : ComponentActivity() {
     }
     override fun onDestroy() {
         // 返回键正常退出视为干净退出；进程被直接杀死时不会走到这里
-        if (isFinishing) SessionStore.markCleanExit()
+        if (isFinishing) {
+            SessionStore.markCleanExit()
+            Diagnostics.webViewSessionEnded()
+        }
         super.onDestroy()
     }
 }
@@ -495,6 +500,8 @@ private fun createWebView(
     onGeoPrompt: (String, android.webkit.GeolocationPermissions.Callback) -> Unit = { o, cb -> cb.invoke(o, false, false) },
     onGeoHide: () -> Unit = {}
 ): WebView {
+    // 标记"网页视图会话进行中"：若进程在此后异常消失（含原生崩溃），下次启动据此进入安全模式
+    Diagnostics.webViewSessionStarted()
     val wv = SecureWebView(context)
     // 触摸网页内容（含空白处）即收起地址栏输入焦点；返回 false 不影响网页自身交互
     wv.setOnTouchListener { _, event ->
@@ -613,6 +620,8 @@ private fun createWebView(
             tab.title = view.title?.takeIf { it.isNotBlank() } ?: url ?: "新标签页"
             if (url != null) tab.url = url
             tab.navVersion++
+            // 首次加载完成说明网页视图链路可用，清掉"会话进行中"标记
+            Diagnostics.webViewSessionEnded()
             if (url != null) {
                 if (tab.incognito) IncognitoGuard.recordHost(url)
                 else HistoryStore.record(url, view.title ?: "")
@@ -757,6 +766,32 @@ private fun BrowserScreen(
     var geoRequest by remember { mutableStateOf<Pair<String, android.webkit.GeolocationPermissions.Callback>?>(null) }
     var geoRemember by remember { mutableStateOf(true) }
 
+    // ---- 崩溃诊断 / WebView 容错 / 安全模式 ----
+    var safeMode by remember { mutableStateOf(Diagnostics.safeMode) }
+    var webViewFailure by remember { mutableStateOf<String?>(null) }
+    var diagReport by remember { mutableStateOf<String?>(null) }
+
+    // 启动时若发现上次异常退出，展示可复制的诊断信息（不自动清除，便于用户反馈后再关）
+    LaunchedEffect(Unit) {
+        val crash = Diagnostics.lastCrashReport()
+        diagReport = when {
+            crash != null -> {
+                val prefix = if (crash.contains("kind: caught")) {
+                    "上次运行时网页组件出错（已被拦截，没有闪退）。\n\n"
+                } else {
+                    "上次运行崩溃（Java 异常）。\n\n"
+                }
+                prefix + crash
+            }
+            Diagnostics.lastRunCrashedInWebView ->
+                "上次运行在打开网页时异常退出（无 Java 异常，疑似系统 WebView 原生崩溃）。\n\n" +
+                    Diagnostics.deviceReport(includeWebView = false) +
+                    "\n\n应用已自动进入安全模式：本次不启用代理，网页走直连。" +
+                    "若仍崩溃，请在系统设置里更新或清除 Android System WebView 的数据。"
+            else -> null
+        }
+    }
+
     // 工具箱关闭后刷新建议开关（开关在更多页内修改）
     LaunchedEffect(showToolboxSheet) {
         if (!showToolboxSheet) suggestOn = ProxyManager.isSuggestEnabled()
@@ -871,6 +906,12 @@ private fun BrowserScreen(
 
     // 启动内核 -> 绑定 WebView 代理 -> 成功回调后才允许加载网页（用户关闭代理时直接直连）
     LaunchedEffect(Unit) {
+        if (safeMode) {
+            // 安全模式：上次死在"打开网页"链路，本次先不启内核、不设置 WebView 代理，保证能直连上网
+            proxyReady = false
+            bootDone = true
+            return@LaunchedEffect
+        }
         if (ProxyManager.isProxyEnabled()) {
             val ok = ProxyManager.start()
             val pr = if (ok) WebViewProxyHelper.applyProxy(context) else false
@@ -895,6 +936,11 @@ private fun BrowserScreen(
         if (coreState == CoreState.STOPPED) proxyReady = false
     }
 
+    // 代理面板里成功启用代理后，安全模式横幅要随之消失（applyProxy(force) 内部已解除安全模式）
+    LaunchedEffect(proxyReady) {
+        if (proxyReady && safeMode) safeMode = Diagnostics.safeMode
+    }
+
     LaunchedEffect(activeTab.id, activeTab.url, activeTab.navVersion, addressFocused) {
         if (!addressFocused) addressValue = TextFieldValue(if (isHome) "" else activeTab.url)
     }
@@ -910,7 +956,7 @@ private fun BrowserScreen(
                     // 回前台：恢复网页定时器与渲染
                     current?.webView?.resumeTimers()
                     current?.webView?.onResume()
-                    if (bootDone && ProxyManager.isProxyEnabled() &&
+                    if (bootDone && !safeMode && ProxyManager.isProxyEnabled() &&
                         ProxyManager.state.value != CoreState.RUNNING
                     ) {
                         scope.launch {
@@ -952,35 +998,76 @@ private fun BrowserScreen(
         if (dark) android.R.style.Theme_Material else android.R.style.Theme_Material_Light
     )
 
-    fun obtainWebView(tab: TabState): WebView =
-        tab.webView ?: createWebView(
-            themedContext(), tab, { rootFocus.clearFocus() }, { ctxMenu = it },
-            { msg ->
-                val t = TabState(nextId++, tab.incognito)
-                tabs.add(t)
-                val wv = obtainWebView(t)
-                (msg.obj as? WebView.WebViewTransport)?.webView = wv
-                msg.sendToTarget()
-                activeId = t.id
-                true
-            },
-            onFileChooser,
-            { o, t -> findOrdinal = o; findTotal = t },
-            { origin, cb ->
-                when (GeoStore.decision(origin)) {
-                    null -> {
-                        geoRemember = true
-                        geoRequest = origin to cb
+    /** 创建 WebView 的容错包装：失败时记录诊断并切到错误页，而不是让应用闪退。 */
+    fun obtainWebView(tab: TabState): WebView? {
+        tab.webView?.let { return it }
+        return try {
+            val wv = createWebView(
+                themedContext(), tab, { rootFocus.clearFocus() }, { ctxMenu = it },
+                { msg ->
+                    val t = TabState(nextId++, tab.incognito)
+                    tabs.add(t)
+                    val newWv = obtainWebView(t)
+                    if (newWv == null) {
+                        tabs.remove(t)
+                        false
+                    } else {
+                        (msg.obj as? WebView.WebViewTransport)?.webView = newWv
+                        msg.sendToTarget()
+                        activeId = t.id
+                        true
                     }
-                    true -> onGeoAllow(origin, cb)
-                    false -> cb.invoke(origin, false, false)
+                },
+                onFileChooser,
+                { o, t -> findOrdinal = o; findTotal = t },
+                { origin, cb ->
+                    when (GeoStore.decision(origin)) {
+                        null -> {
+                            geoRemember = true
+                            geoRequest = origin to cb
+                        }
+                        true -> onGeoAllow(origin, cb)
+                        false -> cb.invoke(origin, false, false)
+                    }
+                },
+                {
+                    geoRequest?.let { (o, cb) -> cb.invoke(o, false, false) }
+                    geoRequest = null
                 }
-            },
-            {
-                geoRequest?.let { (o, cb) -> cb.invoke(o, false, false) }
-                geoRequest = null
+            )
+            WebViewThemeHelper.apply(wv, dark)
+            wv
+        } catch (t: Throwable) {
+            tab.webView = null
+            Diagnostics.recordCaught("createWebView", t)
+            webViewFailure = describeWebViewFailure(t)
+            null
+        }
+    }
+
+    /** 安全模式下手动重试：显式启动内核并强制设置 WebView 代理，失败则重新进入安全模式。 */
+    fun retryProxyFromSafeMode() {
+        scope.launch {
+            Diagnostics.leaveSafeMode()
+            safeMode = false
+            val ok = ProxyManager.start()
+            val pr = if (ok) WebViewProxyHelper.applyProxy(context, force = true) else false
+            if (ok && pr) {
+                proxyReady = true
+                proxyEnabled = true
+                ProxyManager.setProxyEnabled(true)
+                Toast.makeText(context, "代理已恢复", Toast.LENGTH_SHORT).show()
+            } else {
+                if (ok) ProxyManager.shutdown()
+                proxyReady = false
+                proxyEnabled = false
+                ProxyManager.setProxyEnabled(false)
+                Diagnostics.enterSafeMode()
+                safeMode = true
+                Toast.makeText(context, "代理仍无法启用，继续直连（安全模式）", Toast.LENGTH_LONG).show()
             }
-        ).also { WebViewThemeHelper.apply(it, dark) }
+        }
+    }
 
     fun exitFullscreen() {
         if (activeTab.fullscreenView != null) {
@@ -999,10 +1086,16 @@ private fun BrowserScreen(
             goHome()
             return
         }
-        val wv = obtainWebView(activeTab)
-        activeTab.started = true
-        wv.loadUrl(target)
-        activeTab.url = target
+        val wv = obtainWebView(activeTab) ?: return
+        try {
+            activeTab.started = true
+            wv.loadUrl(target)
+            activeTab.url = target
+        } catch (t: Throwable) {
+            Diagnostics.recordCaught("loadUrl", t)
+            activeTab.started = false
+            webViewFailure = describeWebViewFailure(t)
+        }
     }
 
     // ---------- 阅读模式提取 ----------
@@ -1036,7 +1129,15 @@ private fun BrowserScreen(
             CtxAction.BACKGROUND, CtxAction.NEW_TAB -> {
                 val t = TabState(nextId++, HistoryStore.isIncognito())
                 tabs.add(t)
-                obtainWebView(t).loadUrl(info.linkUrl)
+                val newWv = obtainWebView(t)
+                if (newWv == null) {
+                    tabs.remove(t)
+                    return
+                }
+                runCatching { newWv.loadUrl(info.linkUrl) }.onFailure { e ->
+                    Diagnostics.recordCaught("loadUrl(ctx)", e)
+                    webViewFailure = describeWebViewFailure(e)
+                }
                 if (action == CtxAction.NEW_TAB) activeId = t.id
                 Toast.makeText(
                     context,
@@ -1324,7 +1425,22 @@ private fun BrowserScreen(
 
         // ---------- WebView 内容区 ----------
         Box(Modifier.weight(1f)) {
-            if (isHome) {
+            val failure = webViewFailure
+            if (failure != null) {
+                WebViewFailurePanel(
+                    detail = failure,
+                    onRetry = {
+                        webViewFailure = null
+                        webviewEpoch++
+                    },
+                    onCopy = { copyToClipboard(context, failure) },
+                    onOpenSettings = { openWebViewSettings(context) },
+                    onDismissToHome = {
+                        webViewFailure = null
+                        goHome()
+                    }
+                )
+            } else if (isHome) {
                 HomeScreen(
                     entries = homeEntries,
                     onSearch = { commitAddress(it) },
@@ -1347,23 +1463,34 @@ private fun BrowserScreen(
                     AndroidView(
                         factory = {
                             val wv = obtainWebView(tab)
-                            if (wv.url == null && tab.started) {
-                                val restored = pendingStates.remove(tab.id)?.let {
-                                    runCatching { wv.restoreState(it) }.getOrNull()
+                            if (wv == null) {
+                                // 创建失败：先给占位 View，下一次重组会切到错误说明页
+                                View(context)
+                            } else {
+                                if (wv.url == null && tab.started) {
+                                    val restored = pendingStates.remove(tab.id)?.let {
+                                        runCatching { wv.restoreState(it) }.getOrNull()
+                                    }
+                                    if (restored == null && tab.url.isNotBlank() && !isHomeUrl(tab.url)) {
+                                        runCatching { wv.loadUrl(tab.url) }.onFailure { e ->
+                                            Diagnostics.recordCaught("restoreWebView", e)
+                                            webViewFailure = describeWebViewFailure(e)
+                                        }
+                                    }
                                 }
-                                if (restored == null && tab.url.isNotBlank() && !isHomeUrl(tab.url)) {
-                                    wv.loadUrl(tab.url)
-                                }
+                                wv
                             }
-                            wv
                         },
                         modifier = Modifier.fillMaxSize()
                     )
                 }
             }
-            if (!isHome && !bannerDismissed && (!proxyEnabled || coreState != CoreState.RUNNING || !proxyReady)) {
+            val showProxyBanner = safeMode ||
+                (!isHome && !bannerDismissed && (!proxyEnabled || coreState != CoreState.RUNNING || !proxyReady))
+            if (showProxyBanner) {
                 Surface(
-                    color = themeColor(Color(0xFFFFF3E0), Color(0xFF3A2E1E)),
+                    color = if (safeMode) themeColor(Color(0xFFFFE0B2), Color(0xFF3A2A12))
+                    else themeColor(Color(0xFFFFF3E0), Color(0xFF3A2E1E)),
                     modifier = Modifier.align(Alignment.TopCenter).fillMaxWidth()
                 ) {
                     Row(
@@ -1371,21 +1498,30 @@ private fun BrowserScreen(
                         modifier = Modifier.fillMaxWidth().padding(start = 6.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
                     ) {
                         Text(
-                            if (!proxyEnabled) "代理已关闭 · 直连模式（点右上红点开启）"
-                            else if (coreState != CoreState.RUNNING) "内核未运行 · 自动重启中，网页暂不可用（点右上红点查看日志）"
-                            else "代理未就绪 · 当前直连（点右上红点配置）",
+                            when {
+                                safeMode -> "安全模式：上次打开网页时异常退出，本次已跳过代理设置（可直连上网）"
+                                !proxyEnabled -> "代理已关闭 · 直连模式（点右上红点开启）"
+                                coreState != CoreState.RUNNING -> "内核未运行 · 自动重启中，网页暂不可用（点右上红点查看日志）"
+                                else -> "代理未就绪 · 当前直连（点右上红点配置）"
+                            },
                             fontSize = 12.sp,
                             color = themeColor(Color(0xFF8D6E63), Color(0xFFD7B98E)),
                             textAlign = TextAlign.Center,
                             modifier = Modifier.weight(1f).padding(vertical = 4.dp)
                         )
-                        IconButton(onClick = { bannerDismissed = true }, modifier = Modifier.size(28.dp)) {
-                            Icon(
-                                Icons.Default.Close,
-                                "关闭提示",
-                                tint = themeColor(Color(0xFF8D6E63), Color(0xFFD7B98E)),
-                                modifier = Modifier.size(16.dp)
-                            )
+                        if (safeMode) {
+                            TextButton(onClick = { retryProxyFromSafeMode() }, modifier = Modifier.height(32.dp)) {
+                                Text("重试代理", fontSize = 12.sp)
+                            }
+                        } else {
+                            IconButton(onClick = { bannerDismissed = true }, modifier = Modifier.size(28.dp)) {
+                                Icon(
+                                    Icons.Default.Close,
+                                    "关闭提示",
+                                    tint = themeColor(Color(0xFF8D6E63), Color(0xFFD7B98E)),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                            }
                         }
                     }
                 }
@@ -1647,6 +1783,33 @@ private fun BrowserScreen(
         )
     }
 
+    // ---------- 上次异常退出的诊断信息（可复制反馈） ----------
+    diagReport?.let { report ->
+        AlertDialog(
+            onDismissRequest = {
+                diagReport = null
+                Diagnostics.clearCrashReport()
+            },
+            title = { Text("上次运行诊断信息") },
+            text = {
+                Column(
+                    Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState())
+                ) {
+                    Text(report, fontSize = 12.sp)
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { copyToClipboard(context, report) }) { Text("复制详情") }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    diagReport = null
+                    Diagnostics.clearCrashReport()
+                }) { Text("关闭") }
+            }
+        )
+    }
+
     // ---------- 首页图标管理 ----------
     if (showHomeIcons) {
         HomeIconsSheet(onDismiss = {
@@ -1684,5 +1847,68 @@ private fun BrowserScreen(
                 }) { Text("不恢复") }
             }
         )
+    }
+}
+
+/** WebView 创建/加载失败时的说明页：不闪退，给出原因与可执行的修复步骤。 */
+@Composable
+private fun WebViewFailurePanel(
+    detail: String,
+    onRetry: () -> Unit,
+    onCopy: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onDismissToHome: () -> Unit
+) {
+    Column(
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(20.dp)
+    ) {
+        Text(
+            "网页视图不可用",
+            fontWeight = FontWeight.Bold,
+            fontSize = 17.sp,
+            color = MaterialTheme.colorScheme.error
+        )
+        Spacer(Modifier.height(8.dp))
+        Text("系统网页组件（WebView）创建失败或异常退出了，应用已拦截闪退。", fontSize = 13.sp)
+        Spacer(Modifier.height(12.dp))
+        Text("可以这样修复：", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Spacer(Modifier.height(4.dp))
+        Text("1. 设置 → 应用 → 显示系统应用 → 找到 Android System WebView（或 Chrome）→ 更新或启用", fontSize = 13.sp)
+        Text("2. 若已启用：清除它的存储数据，或卸载其更新后重启手机", fontSize = 13.sp)
+        Text("3. 仍失败：检查系统 WebView 是否被精简/替换，必要时恢复系统自带版本", fontSize = 13.sp)
+        Spacer(Modifier.height(12.dp))
+        Text("错误详情", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+        Spacer(Modifier.height(4.dp))
+        Text(detail, fontSize = 11.sp, color = Color.Gray)
+        Spacer(Modifier.height(16.dp))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            TextButton(onClick = onRetry) { Text("重试") }
+            TextButton(onClick = onCopy) { Text("复制详情") }
+            TextButton(onClick = onOpenSettings) { Text("WebView 设置") }
+            TextButton(onClick = onDismissToHome) { Text("回到主页") }
+        }
+    }
+}
+
+/** 给用户看的 WebView 失败摘要（含设备/WebView 版本，可直接复制反馈）。 */
+private fun describeWebViewFailure(t: Throwable): String = buildString {
+    appendLine("${t.javaClass.name}: ${t.message ?: "（无错误信息）"}")
+    appendLine()
+    append(Diagnostics.deviceReport())
+}
+
+/** 打开系统 WebView 提供方的应用详情页，方便用户更新/清除数据。 */
+private fun openWebViewSettings(context: android.content.Context) {
+    val pkg = runCatching { WebView.getCurrentWebViewPackage()?.packageName }.getOrNull()
+    val intent = if (pkg != null) {
+        Intent(
+            android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+            Uri.parse("package:$pkg")
+        )
+    } else {
+        Intent(android.provider.Settings.ACTION_SETTINGS)
+    }
+    runCatching { context.startActivity(intent) }.onFailure {
+        Toast.makeText(context, "无法打开系统设置", Toast.LENGTH_SHORT).show()
     }
 }

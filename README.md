@@ -226,7 +226,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 ## Current status
 
-Version **1.16.2** (`versionCode 26`), actively developed. Version names follow
+Version **1.16.3** (`versionCode 27`), actively developed. Version names follow
 semver (feature = minor, fix = patch); see CHANGELOG for the old→new map.
 
 | Area | Status |
@@ -253,6 +253,10 @@ semver (feature = minor, fix = patch); see CHANGELOG for the old→new map.
 - **Site permission management is not implemented.**
 - **Ad blocking is a small built-in host list** plus user-marked domains; it is not a rule-subscription engine and cannot be toggled.
 - **DRM playback depends on the system WebView provider and Widevine availability.** On devices without a usable CDM, the app falls back to non-encrypted streams after a 4-second EME probe timeout.
+- **A working system WebView is required.** If Android System WebView is missing,
+  disabled, or crashes on this device, pages cannot be rendered: the app now shows
+  an actionable error page instead of crashing, and "safe mode" skips the WebView
+  proxy override so browsing can at least fall back to a direct connection.
 - **The proxy applies only if the WebView provider supports `ProxyController`**; otherwise the app silently falls back to a direct connection.
 - **The local mihomo API (`127.0.0.1:19090`, empty secret) and mixed port (`127.0.0.1:17890`) are reachable by other apps on the same device while the core is running.**
 - **The core and Geo data are downloaded at build time from GitHub's "latest" release without checksum pinning**, which makes builds non-reproducible.

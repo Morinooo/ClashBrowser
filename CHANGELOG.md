@@ -17,6 +17,33 @@ installed apps can always upgrade; only `versionName` / tags were reorganized.
 1.7.0→1.14.0. GitHub releases were retagged accordingly (v1.13.0 / v1.13.1 /
 v1.13.2 / v1.14.0); older history never had published releases.
 
+## [1.16.3] — versionCode 27
+
+### Fixed
+- Emergency fix for an instant crash on some devices when the first page was
+  opened (typing in the home search box and pressing Enter). The app used no
+  error handling around WebView creation/loading, so any failure of the system
+  WebView (missing provider, incompatible WebView build, native renderer crash)
+  killed the app without a message. It now:
+  - checks that the WebView provider exists and that the device supports
+    WebView proxy overrides before using them;
+  - catches WebView creation/loading failures and shows an actionable error page
+    (retry / copy details / open the WebView app settings / back to home)
+    instead of crashing.
+- Note: this crash was **not** introduced by v1.16.2 — the affected code paths
+  are byte-identical to v1.16.1, which matches the reported "reinstall an older
+  APK and it still crashes".
+
+### Added
+- Local crash diagnostics (offline, nothing is uploaded): uncaught exceptions and
+  a "WebView session in progress" marker are written to app-private storage and
+  shown on the next launch with a copy button, including Android/WebView
+  package/version details.
+- Safe mode: if the previous run died while opening a web view, this launch
+  skips applying the WebView proxy override (the most likely crash trigger on
+  affected WebView builds) so pages can still load directly; a banner offers a
+  one-tap "retry proxy", and an explicit action in the proxy panel also retries.
+
 ## [1.16.2] — versionCode 26
 
 ### Fixed
