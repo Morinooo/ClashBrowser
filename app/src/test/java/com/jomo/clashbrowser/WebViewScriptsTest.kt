@@ -7,14 +7,14 @@ import org.junit.Test
  * 回归测试：document-start 脚本的来源规则必须是 WebView 认可的格式，
  * 且脚本自身要限定只在 http/https 文档生效。
  *
- * 背景：v1.16.1 曾把 allowedOriginRules 写成 `http://*` / `https://*`，
+ * 背景：v1.16.1 曾把 allowedOriginRules 写成 `http://` 再加一个 `*` 的形式，
  * 旧 WebView 不校验所以没暴露；WebView 150（Chromium 新版）严格校验后
- * 抛 `IllegalArgumentException: allowedOriginRules http://* is invalid`，
+ * 抛 `IllegalArgumentException: allowedOriginRules … is invalid`，
  * 导致每次创建 WebView 都闪退（v1.16.4 修复）。
  */
 class WebViewScriptsTest {
 
-    /** WebView 支持的来源规则：`*`、`scheme://host[:port]`、`scheme://*.host[:port]`。 */
+    /** WebView 支持的来源规则：`*`、`scheme://host[:port]`、`scheme://` 再跟 `*.host`。 */
     private val validOriginRule = Regex("""^(\*|https?://(\*\.)?[A-Za-z0-9.-]+(:\d+)?)$""")
 
     @Test

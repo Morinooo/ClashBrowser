@@ -494,11 +494,12 @@ window.webkitRTCPeerConnection=undefined;window.mozRTCPeerConnection=undefined;
 /**
  * document-start 脚本的允许来源规则。
  *
- * WebView 只接受规范格式：`*`（全部来源）、`https://example.com`、`https://*.example.com`。
- * 绝不能写成 `http://*` / `https://*`——v1.16.1 曾这样写，旧 WebView 不校验侥幸能用，
+ * WebView 只接受规范格式：全来源 `*`、精确来源（如 https://example.com）、
+ * 子域来源（如 https:// 再跟 *.example.com）。绝不能把 scheme 通配符写成
+ * `http://` 后面直接跟 `*` 的形式——v1.16.1 曾这样写，旧 WebView 不校验侥幸能用，
  * 但 WebView 150（Chromium 新版）会抛 IllegalArgumentException: allowedOriginRules … is invalid，
  * 导致创建 WebView 时闪退（v1.16.4 修复）。脚本内部各自做 `location.protocol` 守卫，
- * 因此这里用全来源 `*` 也不会作用到 file:// 等非 http(s) 文档。
+ * 因此这里用全来源也不会作用到 file 协议等非 http(s) 文档。
  */
 internal val DOCUMENT_START_ORIGINS: Set<String> = setOf("*")
 
